@@ -246,7 +246,7 @@ public class Program
     static void LoadCerts(string certPath)
     {
         Console.ForegroundColor = ConsoleColor.DarkYellow;
-        Console.WriteLine("Use --certPath <dir> to modify the certificates folder.");
+        Console.WriteLine("Use --certPath=<dir> to change certificates folder.");
         Console.ForegroundColor = ConsoleColor.Red;
         try
         {
@@ -359,7 +359,7 @@ public class Startup
                 string FileToUse = string.Join("/", path);
                 if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count-1].Substring(path[path.Count - 1].Length-1) != "/")) // linking directly to a file or a directory
                 {
-                    while(!FileLead.TryGetValue((FileToUse=string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
+                    while(!FileLead.TryGetValue((FileToUse=string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index._cs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.bun"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
                     {
                         path.RemoveAt(path.Count-1);
                     }
@@ -376,7 +376,7 @@ public class Startup
                     }
                     string[] getExt = FileToUse.Split('.');
                     string Ext = getExt[getExt.Length - 1];
-                    if (ExtTypes.TryGetValue(FileToUse, out string? ctype))
+                    if (ExtTypes.TryGetValue(Ext, out string? ctype))
                     {
                         context.Response.Headers["content-type"] = ctype;
                     }
@@ -481,10 +481,11 @@ public class Startup
             }
 
             return;
-        }catch(Exception)
+        }catch(Exception e)
         {
             context.Response.StatusCode = 500;
             await context.Response.WriteAsync("Sorry. An error occurred.");
+            Console.WriteLine(e);
             return;
         }
     }
