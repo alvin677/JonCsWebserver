@@ -21,6 +21,8 @@ using Microsoft.AspNetCore.ResponseCompression;
 using System.IO.Compression;
 using static Startup;
 using System.Text.Json.Nodes;
+using System.Xml;
+using Newtonsoft.Json;
 
 public class Program
 {
@@ -30,14 +32,16 @@ public class Program
     public static string SessDir = "/websavedata/sess/";
     public static string NjsEndpoint = "http://{domain}:3000";
     public static string BunEndpoint = "http://{domain}:3000";
+    public static Config config;
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.InvariantCultureIgnoreCase);
     public static void Main(string[] args)
     {
-        string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? "/etc/letsencrypt/live/";
-        WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? "";
-        BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? "/var/www";
-        NjsEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--njsEndpoint"))?.Split("=")[1] ?? "http://{domain}:3000";
-        BunEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--bunEndpoint"))?.Split("=")[1] ?? "http://{domain}:3000";
+        config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+        string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
+        WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
+        BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? config.BackendDir;
+        NjsEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--njsEndpoint"))?.Split("=")[1] ?? config.NjsEndpoint;
+        BunEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--bunEndpoint"))?.Split("=")[1] ?? config.BunEndpoint;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
         if(HelpCmd)
         {
@@ -292,11 +296,10 @@ public class Startup
     string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br />${0}<br /><p>Maybe we're working on adding this page.</p>${1}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
     public static readonly ConcurrentDictionary<string, DateTime> FileIndex = new ConcurrentDictionary<string, DateTime>();
     public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>();
-    public static ConcurrentDictionary<string, JsonArray> Sessions = new ConcurrentDictionary<string, JsonArray>();
-    public static readonly Dictionary<string, string> ExtTypes = new Dictionary<string, string>();
+    public static ConcurrentDictionary<string, JsonObject> Sessions = new ConcurrentDictionary<string, JsonObject>();
     private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>();
-    
-    
+    private static Timer _cleanupTimer;
+
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddRouting();
@@ -343,11 +346,10 @@ public class Startup
         {
             endpoints.Map("/{**catchAll}", async context =>
             {
-                context.Response.Headers["Server"] = "JH";
-                context.Response.Headers["vary"] = "Accept-Encoding";
-                context.Response.Headers["Accept-Ranges"] = "bytes";
-                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
-                context.Response.Headers["cache-control"] = "max-age=31536000";
+                foreach(KeyValuePair<string,string> header in Program.config.DefaultHeaders)
+                {
+                    context.Response.Headers[header.Key] = header.Value;
+                }
 
                 List<string> path = GetDomainBasedPath(context); // Extract the request path
                 if (DateTime.TryParse(context.Request.Headers.IfModifiedSince, out DateTime LM))
@@ -381,7 +383,7 @@ public class Startup
                     }
                     string[] getExt = FileToUse.Split('.');
                     string Ext = getExt[getExt.Length - 1];
-                    if (ExtTypes.TryGetValue(Ext, out string? ctype))
+                    if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
                     {
                         context.Response.Headers["content-type"] = ctype;
                     }
@@ -394,37 +396,16 @@ public class Startup
             });
         });
         httpClient.Timeout = TimeSpan.FromSeconds(300);
+
+        foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
         Extensions["njs"] = ForwardRequestToNodeJs;
         Extensions["bun"] = ForwardRequestToBunJs;
-        Extensions["zip"] = DefDownload;
-        Extensions["jar"] = DefDownload;
-        Extensions["dll"] = DefDownload;
-        Extensions["exe"] = DefDownload;
-        ExtTypes["html"] = "text/html";
-        ExtTypes["txt"] = "text/plain";
-        ExtTypes["log"] = "text/plain";
-        ExtTypes["css"] = "text/css";
-        ExtTypes["js"] = "application/javascript";
-        ExtTypes["json"] = "application/json";
-        ExtTypes["pdf"] = "application/pdf";
-        foreach (string g in new string[]{ "jpeg", "png", "gif", "webp", "ico"}) {
-            ExtTypes[g] = "image/" + g;
-        }
-        ExtTypes["jpg"] = "image/jpeg";
-        ExtTypes["svg"] = "image/svg+xml";
-        foreach (string g in new string[] { "wav", "ogg" })
-        {
-            ExtTypes[g] = "audio/" + g;
-        }
-        ExtTypes["mp3"] = "audio/mpeg";
-        foreach (string g in new string[] { "mp4", "flv", "mkv", "wmf", "avi", "webm" })
-        {
-            ExtTypes[g] = "video/" + g;
-        }
+        _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+        handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+
 
         IndexFiles(Program.BackendDir);
         SetupFileWatcher(Program.BackendDir);
-
     }
     public static List<string> GetDomainBasedPath(HttpContext context)
     {
@@ -448,27 +429,34 @@ public class Startup
         context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
         await context.Response.SendFileAsync(file);
     }
-    static async Task<JsonArray?> GetSess(string? id) {
+    static async Task<JsonObject?> GetSess(string? id) {
         if(id == null)
         {
             string nid = GenerateRandomId();
             byte attempt = 0;
             while(!File.Exists(Path.Combine(Program.SessDir, id)) && !Sessions.ContainsKey(id) && attempt < 5)
             {
-                if (nid.Length > 256)
+                if (nid.Length > 128)
                 {
                     nid = string.Empty;
                     attempt++;
                 }
                 nid += GenerateRandomId();
             }
+            if (nid != string.Empty)
+            {
+                JsonObject ob = new JsonObject();
+                ob.Add("id", nid);
+                Sessions[nid] = ob;
+                return ob;
+            }
             return null;
         }
-        if (Sessions.TryGetValue(id, out JsonArray? gg)) return gg;
+        if (Sessions.TryGetValue(id, out JsonObject? gg)) return gg;
         try
         {
             string Sess = await File.ReadAllTextAsync(Path.Combine(Program.SessDir, id));
-            gg = JsonNode.Parse(Sess) as JsonArray;
+            gg = JsonNode.Parse(Sess) as JsonObject;
             if (gg != null) Sessions[id] = gg;
             return gg;
         }
@@ -482,8 +470,8 @@ public class Startup
         Random random = new Random();
         return new string(Enumerable.Range(0, length).Select(_ => chars[random.Next(chars.Length)]).ToArray());
     }
-
-    private static readonly HttpClient httpClient = new HttpClient();
+    private static HttpClientHandler handler = new HttpClientHandler();
+    private static readonly HttpClient httpClient = new HttpClient(handler);
     private async Task ForwardRequestToNodeJs(HttpContext context, string backendFilePath)
     {
         string targetUrl = $"{Program.NjsEndpoint.Replace("{domain}", context.Request.Host.Value)}{backendFilePath}";
@@ -701,5 +689,87 @@ public class Worker : BackgroundService
             var task = await _taskQueue.DequeueAsync(stoppingToken);
             await task(stoppingToken);
         }
+    }
+}
+
+public class Config
+{
+    public int ClearSessEveryXMin { get; set; }
+    public string WWWdir { get; set; }
+    public string BackendDir { get; set; }
+    public string SessDir { get; set; }
+    public string CertDir { get; set; }
+    public string NjsEndpoint { get; set; }
+    public string BunEndpoint { get; set; }
+    public string Rand_Alphabet { get; set; }
+    public List<string> DownloadIfExtension { get; set; }
+    public Dictionary<string,string> ExtTypes { get; private set; } = new Dictionary<string, string>();
+    public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
+    static JsonSerializerSettings settings = new Newtonsoft.Json.JsonSerializerSettings
+    {
+        ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+    };
+    public void LoadDefaults()
+    {
+        ClearSessEveryXMin = 5;
+        WWWdir = "";
+        BackendDir = "/var/www";
+        SessDir = "/websavedata/sess/";
+        CertDir = "/etc/letsencrypt/live/";
+        NjsEndpoint = "http://{domain}:3000";
+        BunEndpoint = "http://{domain}:3000";
+        Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        DownloadIfExtension = new List<string>() {
+            "zip",
+            "jar",
+            "dll",
+            "exe"
+        };
+        ExtTypes = new Dictionary<string, string>()
+        {
+            ["html"] = "text/html",
+            ["txt"] = "text/plain",
+            ["log"] = "text/plain",
+            ["css"] = "text/css",
+            ["js"] = "application/javascript",
+            ["json"] = "application/json",
+            ["pdf"] = "application/pdf",
+            ["jpg"] = "image/jpeg",
+            ["svg"] = "image/svg+xml",
+            ["mp3"] = "audio/mpeg",
+        };
+
+        foreach (string g in new string[] { "wav", "ogg" })
+        {
+            ExtTypes[g] = "audio/" + g;
+        }
+        foreach (string g in new string[] { "mp4", "flv", "mkv", "wmf", "avi", "webm" })
+        {
+            ExtTypes[g] = "video/" + g;
+        }
+        DefaultHeaders["Server"] = "JH";
+        DefaultHeaders["vary"] = "Accept-Encoding";
+        DefaultHeaders["Accept-Ranges"] = "bytes";
+        DefaultHeaders["Access-Control-Allow-Origin"] = "*";
+        DefaultHeaders["cache-control"] = "max-age=31536000";
+    }
+    public static Config Load(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Config config = new Config();
+            config.LoadDefaults();
+            File.WriteAllText(filePath, JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented, settings));
+            return config;
+        }
+
+        string json = File.ReadAllText(filePath);
+        return JsonConvert.DeserializeObject<Config>(json);
+    }
+
+    public async void Save(string filePath)
+    {
+        string json = JsonConvert.SerializeObject(this, Newtonsoft.Json.Formatting.Indented, settings);
+        await File.WriteAllTextAsync(filePath, json);
     }
 }
