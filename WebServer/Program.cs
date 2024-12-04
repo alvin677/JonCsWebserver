@@ -510,7 +510,20 @@ public class Startup
                 context.Request.Body.Position = 0;
                 requestMessage.Headers.TransferEncodingChunked = true;
                 requestMessage.Content = new StreamContent(context.Request.Body);
-                //requestMessage.Content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/octet-stream");
+                if (context.Request.ContentType != null)
+                {
+                    string[] contentType = context.Request.ContentType.Split(';');
+                    string mediaType = contentType[0].Trim(); // e.g., "text/plain"
+                    string? charset = contentType.Length > 1 ? contentType[1].Trim() : null; // e.g., "charset=UTF-8"
+
+                    var mediaTypeHeader = new MediaTypeHeaderValue(mediaType);
+                    if (charset != null)
+                    {
+                        mediaTypeHeader.CharSet = charset.Substring(charset.IndexOf('=') + 1);
+                    }
+
+                    requestMessage.Content.Headers.ContentType = mediaTypeHeader;
+                }
             }
 
             foreach (var header in context.Request.Headers)
