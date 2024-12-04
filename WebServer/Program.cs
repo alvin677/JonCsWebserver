@@ -28,7 +28,6 @@ public class Program
     public static bool act = true;
     public static string WWWdir = "";
     public static string BackendDir = "/var/www";
-    public static string SessDir = "/websavedata/sess/";
     public static Config config;
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.InvariantCultureIgnoreCase);
     public static void Main(string[] args)
@@ -57,69 +56,86 @@ public class Program
             while ((cmd = Console.ReadLine()) != "" && act)
             {
                 string[] Args = cmd.Split(" ");
-                if (Args[0] == "help")
+                switch (Args[0])
                 {
-                    Console.WriteLine("help\nlistfiles\ncountfiles\nindexfiles\nloadcerts\nclearcerts\nstats\ngc");
-                }
-                else
-                if (Args[0] == "listfiles")
-                {
-                    if (Args.Length > 1)
-                    {
-                        foreach (string path in Startup.FileLead.Keys)
+                    case "help":
                         {
-                            if (path.Contains(Args[1])) Console.WriteLine(path);
+                            Console.WriteLine("help\nlistfiles\ncountfiles\nindexfiles\nloadcerts\nclearcerts\nstats\ngc");
+                            break;
                         }
-                    }
-                    else
-                        foreach (string path in Startup.FileLead.Keys)
+                    case "listfiles":
                         {
-                            Console.WriteLine(path);
+                            if (Args.Length > 1)
+                            {
+                                foreach (string path in Startup.FileLead.Keys)
+                                {
+                                    if (path.Contains(Args[1])) Console.WriteLine(path);
+                                }
+                            }
+                            else
+                                foreach (string path in Startup.FileLead.Keys)
+                                {
+                                    Console.WriteLine(path);
+                                }
+                            break;
                         }
-                }
-                else
-                if (Args[0] == "countfiles")
-                {
-                    if (Args.Length > 1)
-                    {
-                        Console.WriteLine(Startup.FileLead.Keys.Where(str => str.Contains(Args[1])).Count().ToString());
-                    }
-                    else
-                    {
-                        Console.WriteLine(Startup.FileLead.Count.ToString());
-                    }
-                }
-                else
-                if (Args[0] == "indexfiles")
-                {
-                    Startup.IndexFiles(BackendDir);
-                }
-                else if (Args[0] == "shutdown")
-                {
-                    Console.WriteLine("Shutting down..");
-                    web.StopAsync();
-                    act = false;
-                }
-                else if (Args[0] == "loadcerts")
-                {
-                    LoadCerts(certPath);
-                }else if (Args[0] == "clearcerts")
-                {
-                    Certs.Clear();
-                }else if (Args[0] == "stats")
-                {
-                    GetMemoryUsage();
-                    GetCPUUsage();
-                }else if (Args[0] == "gc")
-                {
-                    Console.WriteLine("Collecting..");
-                    GC.Collect();
-                    Console.WriteLine("Collected.");
-                }else if (Args[0] == "reload")
-                {
-                    config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
-                    config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
-                    Console.WriteLine("Reloaded!");
+                    case "countfiles":
+                        {
+                            if (Args.Length > 1)
+                            {
+                                Console.WriteLine(Startup.FileLead.Keys.Where(str => str.Contains(Args[1])).Count().ToString());
+                            }
+                            else
+                            {
+                                Console.WriteLine(Startup.FileLead.Count.ToString());
+                            }
+                            break;
+                        }
+                    case "indexfiles":
+                        {
+                            Startup.IndexFiles(BackendDir);
+                            Console.WriteLine("Indexxed " + BackendDir);
+                            break;
+                        }
+                    case "loadcerts":
+                        {
+                            LoadCerts(certPath);
+                            break;
+                        }
+                    case "clearcerts":
+                        {
+                            Certs.Clear();
+                            break;
+                        }
+                    case "stats":
+                    case "statistics":
+                    case "status":
+                        {
+                            GetMemoryUsage();
+                            GetCPUUsage();
+                            break;
+                        }
+                    case "gc":
+                        {
+                            Console.WriteLine("Collecting..");
+                            GC.Collect();
+                            Console.WriteLine("Collected.");
+                            break;
+                        }
+                    case "reload":
+                        {
+                            config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+                            config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
+                            Console.WriteLine("Reloaded!");
+                            break;
+                        }
+                    case "shutdown":
+                        {
+                            Console.WriteLine("Shutting down..");
+                            web.StopAsync();
+                            act = false;
+                            break;
+                        }
                 }
             }
         });
@@ -444,7 +460,7 @@ public class Startup
         {
             string nid = GenerateRandomId();
             byte attempt = 0;
-            while(!File.Exists(Path.Combine(Program.SessDir, id)) && !Sessions.ContainsKey(id) && attempt < 5)
+            while(!File.Exists(Path.Combine(Program.config.SessDir, id)) && !Sessions.ContainsKey(id) && attempt < 5)
             {
                 if (nid.Length > 128)
                 {
@@ -465,7 +481,7 @@ public class Startup
         if (Sessions.TryGetValue(id, out JsonObject? gg)) return gg;
         try
         {
-            string Sess = await File.ReadAllTextAsync(Path.Combine(Program.SessDir, id));
+            string Sess = await File.ReadAllTextAsync(Path.Combine(Program.config.SessDir, id));
             gg = JsonNode.Parse(Sess) as JsonObject;
             if (gg != null) Sessions[id] = gg;
             return gg;
