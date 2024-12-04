@@ -33,4 +33,4 @@ function Run($context, $path) {
 }
 ?>
 ```
-To support this, run `dotnet tool install --global Peachpie.Compiler.Tools`
+To support PHP, run `dotnet tool install --global Peachpie.Compiler.Tools` (and Enable_PHP = true in config file)
