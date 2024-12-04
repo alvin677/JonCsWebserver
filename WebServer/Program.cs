@@ -357,7 +357,7 @@ public class Startup
         }
         app.UseResponseCompression();
         app.UseRouting();
-        app.UseEndpoints(endpoints =>
+        if(Program.BackendDir != "") app.UseEndpoints(endpoints =>
         {
             endpoints.Map("/{**catchAll}", async context =>
             {
@@ -385,7 +385,7 @@ public class Startup
                 string FileToUse = string.Join("/", path);
                 if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count-1].Substring(path[path.Count - 1].Length-1) != "/")) // linking directly to a file or a directory
                 {
-                    while(!FileLead.TryGetValue((FileToUse=string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index._cs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.bun"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
+                    while(!FileLead.TryGetValue((FileToUse=string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index._cs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.bun"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.phpdll"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
                     {
                         path.RemoveAt(path.Count-1);
                     }
@@ -460,7 +460,7 @@ public class Startup
         {
             string nid = GenerateRandomId();
             byte attempt = 0;
-            while(!File.Exists(Path.Combine(Program.config.SessDir, id)) && !Sessions.ContainsKey(id) && attempt < 5)
+            while(!Sessions.ContainsKey(id) && attempt < 5 && !File.Exists(Path.Combine(Program.config.SessDir, id)))
             {
                 if (nid.Length > 128)
                 {
@@ -576,9 +576,22 @@ public class Startup
         {
             string[] getExt = file.Split('.');
             string Ext = getExt[getExt.Length - 1];
-            if(Ext == "_cs") {
-                try { CompileAndAddFunction(file); }catch(Exception) { }
+            if (Ext == "_cs" && Program.config.Enable_CS)
+            {
+                try { CompileAndAddFunction(file); } catch (Exception) { }
                 continue;
+            }
+            else if (Program.config.Enable_PHP)
+            {
+                if (Ext == "php")
+                {
+                    try { if(GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception) { }
+                    continue;
+                }else if(Ext == "phpdll")
+                {
+                    try { LoadPhpAssembly(file); } catch (Exception) { }
+                    continue;
+                }
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
             {
@@ -620,9 +633,14 @@ public class Startup
         {
             string[] getExt = filePath.Split('.');
             string Ext = getExt[getExt.Length - 1];
-            if (Ext == "_cs")
+            if (Ext == "_cs" && Program.config.Enable_CS)
             {
                 try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                return;
+            }
+            else if (Program.config.Enable_PHP && Ext == "php")
+            {
+                try { if(GenPhpAssembly(filePath)) LoadPhpAssembly(filePath); } catch (Exception) { }
                 return;
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
@@ -669,6 +687,61 @@ public class Startup
         var result = await script.RunAsync();
         // Add to the dictionary
         FileLead[filePath] = result.ReturnValue;
+    }
+
+    public static void LoadPhpAssembly(string filePath)
+    {
+        var assembly = Assembly.Load(File.ReadAllBytes(filePath+"dll"));
+
+        // Find a specific class or method (depending on how your PHP script is structured)
+        var type = assembly.GetType("Is_PhpScript"); // Use the namespace/class name in your PHP file.
+        var method = type.GetMethod("Run"); // Assuming "Run" is the entry point.
+
+        // Create a delegate for the method (this assumes it's compatible)
+        Func<HttpContext, string, Task> phpFunction = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
+            typeof(Func<HttpContext, string, Task>), method
+        );
+
+        // Add the delegate to your dictionary
+        FileLead[filePath] = phpFunction;
+    }
+    public static bool GenPhpAssembly(string filePath)
+    {
+        try
+        {
+            // Create a new process
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "ppc", // Assumes "ppc" is in your PATH
+                    Arguments = $"{filePath} -o {filePath}dll",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            // Capture output
+            process.Start();
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            // Check if there were errors
+            if (process.ExitCode != 0)
+            {
+                return false;
+            }
+
+            // No errors, return success
+            return true;
+        }
+        catch (Exception ex)
+        {
+            return false;
+        }
     }
 }
 public class Globals
@@ -725,6 +798,8 @@ public class Worker : BackgroundService
 
 public class Config
 {
+    public bool Enable_PHP { get; set; }
+    public bool Enable_CS { get; set; }
     public long? MaxConcurrentConnections { get; set; }
     public long? MaxConcurrentUpgradedConnections { get; set; }
     public long? MaxRequestBodySize { get; set;}
@@ -732,10 +807,10 @@ public class Config
     public int gracePeriod { get; set; }
     public int ClearSessEveryXMin { get; set; }
     public ushort MaxDirDepth { get; set; }
+    public string CertDir { get; set; }
     public string WWWdir { get; set; }
     public string BackendDir { get; set; }
     public string SessDir { get; set; }
-    public string CertDir { get; set; }
     public string Rand_Alphabet { get; set; }
     public string ThreadingDll { get; set; }
     public string HttpDll { get; set; }
@@ -743,15 +818,14 @@ public class Config
     public Dictionary<string,string> ExtTypes { get; private set; } = new Dictionary<string, string>();
     public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
     public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
+
     [JsonIgnore]
     public MinDataRate? MinRequestBodyDataRate { get; set; }
 
-    static JsonSerializerSettings settings = new Newtonsoft.Json.JsonSerializerSettings
-    {
-        ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
-    };
     public void LoadDefaults()
     {
+        Enable_PHP = false;
+        Enable_CS = true;
         MaxConcurrentConnections = null;
         MaxConcurrentUpgradedConnections = 10000;
         MaxRequestBodySize = 30000000;
@@ -759,10 +833,10 @@ public class Config
         gracePeriod = 5;
         ClearSessEveryXMin = 5;
         MaxDirDepth = 15;
+        CertDir = "/etc/letsencrypt/live/";
         WWWdir = "";
         BackendDir = "/var/www";
-        SessDir = "/websavedata/sess/";
-        CertDir = "/etc/letsencrypt/live/";
+        SessDir = "/var/sess/";
         Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         ThreadingDll = "./System.Threading.Tasks.dll";
         HttpDll = "./Microsoft.AspNetCore.Http.dll";
@@ -812,7 +886,7 @@ public class Config
         {
             Config config = new Config();
             config.LoadDefaults();
-            File.WriteAllText(filePath, JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented, settings));
+            File.WriteAllText(filePath, JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented));
             return config;
         }
 
@@ -822,7 +896,7 @@ public class Config
 
     public async void Save(string filePath)
     {
-        string json = JsonConvert.SerializeObject(this, Newtonsoft.Json.Formatting.Indented, settings);
+        string json = JsonConvert.SerializeObject(this, Newtonsoft.Json.Formatting.Indented);
         await File.WriteAllTextAsync(filePath, json);
     }
 }
