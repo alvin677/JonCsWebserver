@@ -33,3 +33,4 @@ function Run($context, $path) {
 }
 ?>
 ```
+To support this, run `dotnet tool install --global Peachpie.Compiler.Tools`
