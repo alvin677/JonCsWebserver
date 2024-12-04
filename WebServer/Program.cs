@@ -2,30 +2,26 @@
 using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
-using System.Collections.Generic;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.AspNetCore.Http;
-using System.Runtime.ConstrainedExecution;
 using Microsoft.Extensions.FileProviders;
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using System.Reflection;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 using Microsoft.AspNetCore.ResponseCompression;
 using System.IO.Compression;
 using static Startup;
 using System.Text.Json.Nodes;
-using System.Xml;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using Microsoft.CodeAnalysis.CSharp.Scripting;
+using Microsoft.CodeAnalysis.Scripting;
+using System.Reflection;
+using CSScriptLib;
+using System.Reflection.Metadata;
 
 public class Program
 {
@@ -33,8 +29,6 @@ public class Program
     public static string WWWdir = "";
     public static string BackendDir = "/var/www";
     public static string SessDir = "/websavedata/sess/";
-    public static string NjsEndpoint = "http://{domain}:3000";
-    public static string BunEndpoint = "http://{domain}:3000";
     public static Config config;
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.InvariantCultureIgnoreCase);
     public static void Main(string[] args)
@@ -44,8 +38,6 @@ public class Program
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
         WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
         BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? config.BackendDir;
-        NjsEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--njsEndpoint"))?.Split("=")[1] ?? config.NjsEndpoint;
-        BunEndpoint = args.FirstOrDefault(arg => arg.StartsWith("--bunEndpoint"))?.Split("=")[1] ?? config.BunEndpoint;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
         if(HelpCmd)
         {
@@ -55,9 +47,7 @@ public class Program
                 "--backend=/var/www | Path for where backend files and dynamic files will be found. index.njs, index.bun, index._cs.\n" +
                 "--ip=127.0.0.1 | Change the IP. Default value is any.\n" +
                 "--httpPort=80,8080 | Change the port(s) for HTTP. Comma-seperated. Default value is 80.\n" +
-                "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.\n" +
-                "--njsEndpoint=http://{domain}:3000 | Set the endpoint for .njs files.\n" +
-                "--bunEndpoint=http://{domain}:3000 | Set the endpoint for .bun files.");
+                "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.");
         }
         LoadCerts(certPath);
         IHost web = CreateHostBuilder(args).Build();
@@ -411,8 +401,13 @@ public class Startup
         httpClient.Timeout = TimeSpan.FromSeconds(300);
 
         foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
-        Extensions["njs"] = ForwardRequestToNodeJs;
-        Extensions["bun"] = ForwardRequestToBunJs;
+        foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
+        {
+            Extensions[ext.Key] = (context, path) => {
+                string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
+                return ForwardRequestTo(context, targetUrl);
+            };
+        }
         _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
 
@@ -487,11 +482,6 @@ public class Startup
     }
     private static HttpClientHandler handler = new HttpClientHandler();
     private static readonly HttpClient httpClient = new HttpClient(handler);
-    private async Task ForwardRequestToNodeJs(HttpContext context, string backendFilePath)
-    {
-        string targetUrl = Program.NjsEndpoint.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
-        await ForwardRequestTo(context, targetUrl);
-    }
     private async Task ForwardRequestTo(HttpContext context, string targetUrl)
     {
         try
@@ -563,11 +553,6 @@ public class Startup
             return;
         }
     }
-    private async Task ForwardRequestToBunJs(HttpContext context, string backendFilePath)
-    {
-        string targetUrl = Program.BunEndpoint.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path + context.Request.QueryString;
-        await ForwardRequestTo(context, targetUrl);
-    }
 
     public static void IndexFiles(string rootDirectory)
     {
@@ -577,7 +562,7 @@ public class Startup
             string Ext = getExt[getExt.Length - 1];
             if(Ext == "_cs") {
                 try { CompileAndAddFunction(file); }catch(Exception) { }
-                return;
+                continue;
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
             {
@@ -643,53 +628,37 @@ public class Startup
         FileLead.TryRemove(filePath, out _);
     }
 
-    public static void CompileAndAddFunction(string filePath)
+    public static async void CompileAndAddFunction(string filePath)
     {
-        string sourceCode = File.ReadAllText(filePath);
+        // Read the code from the file
+        string code = File.ReadAllText(filePath);
+        // Define assembly paths for HttpContext and Task
+        var taskAssembly = typeof(System.Threading.Tasks.Task).Assembly;
+        var taskAssemblyLocation = taskAssembly.Location;  // This works even in packed scenarios
+        var metadataReference = MetadataReference.CreateFromFile(taskAssemblyLocation);
 
-        // Compile the code
-        SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-        var compilation = CSharpCompilation.Create(
-            assemblyName: Path.GetFileNameWithoutExtension(filePath),
-            syntaxTrees: new[] { syntaxTree },
-            references: new[]
-            {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // Core assemblies
-            MetadataReference.CreateFromFile(typeof(HttpContext).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location)
-            },
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using (var ms = new MemoryStream())
-        {
-            var result = compilation.Emit(ms);
-
-            if (!result.Success)
-            {
-                foreach (var diagnostic in result.Diagnostics)
-                    Console.WriteLine(diagnostic.ToString());
-                return; // Compilation failed
-            }
-
-            // Load the assembly
-            ms.Seek(0, SeekOrigin.Begin);
-            Assembly assembly = System.Reflection.Assembly.Load(ms.ToArray());
-
-            // Assuming a class "DynamicCode" with a method "Run"
-            Type? type = assembly.GetType("DynamicCode");
-            MethodInfo? method = type?.GetMethod("Run");
-
-            if (method == null || !(method.CreateDelegate(typeof(Func<HttpContext, string, Task>)) is Func<HttpContext, string, Task>))
-            {
-                Console.WriteLine($"Invalid function signature in file {filePath}");
-                return;
-            }
-
-            // Add to the dictionary
-            Func<HttpContext, string, Task> func = (Func<HttpContext, string, Task>)method.CreateDelegate(typeof(Func<HttpContext, string, Task>));
-            FileLead[filePath] = func;
-        }
+        var references = new[]
+{
+    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+    MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location), // Adds System.Threading.Tasks
+    MetadataReference.CreateFromFile(typeof(System.Net.Http.HttpClient).Assembly.Location) // Adds other dependencies like HttpClient
+};
+        ScriptOptions options = ScriptOptions.Default.WithReferences(
+        MetadataReference.CreateFromFile(Program.config.ThreadingDll),
+        MetadataReference.CreateFromFile(Program.config.HttpDll)
+    ).WithImports("System.Threading.Tasks", "Microsoft.AspNetCore.Http");
+        // Create a script and compile it
+        var script = CSharpScript.Create<Func<HttpContext, string, Task>>(code, options);
+        script.Compile();
+        var result = await script.RunAsync();
+        // Add to the dictionary
+        FileLead[filePath] = result.ReturnValue;
     }
+}
+public class Globals
+{
+    public HttpContext context;
+    public string path;
 }
 
 
@@ -751,11 +720,12 @@ public class Config
     public string BackendDir { get; set; }
     public string SessDir { get; set; }
     public string CertDir { get; set; }
-    public string NjsEndpoint { get; set; }
-    public string BunEndpoint { get; set; }
     public string Rand_Alphabet { get; set; }
+    public string ThreadingDll { get; set; }
+    public string HttpDll { get; set; }
     public List<string> DownloadIfExtension { get; set; }
     public Dictionary<string,string> ExtTypes { get; private set; } = new Dictionary<string, string>();
+    public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
     public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
     [JsonIgnore]
     public MinDataRate? MinRequestBodyDataRate { get; set; }
@@ -777,9 +747,9 @@ public class Config
         BackendDir = "/var/www";
         SessDir = "/websavedata/sess/";
         CertDir = "/etc/letsencrypt/live/";
-        NjsEndpoint = "http://{domain}:3000";
-        BunEndpoint = "http://{domain}:3000";
         Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        ThreadingDll = "./System.Threading.Tasks.dll";
+        HttpDll = "./Microsoft.AspNetCore.Http.dll";
         DownloadIfExtension = new List<string>() {
             "zip",
             "jar",
@@ -799,7 +769,11 @@ public class Config
             ["svg"] = "image/svg+xml",
             ["mp3"] = "audio/mpeg",
         };
-
+        ForwardExt = new Dictionary<string, string>()
+        {
+            ["njs"] = "http://{domain}:3000",
+            ["bun"] = "http://{domain}:3000"
+        };
         foreach (string g in new string[] { "wav", "ogg" })
         {
             ExtTypes[g] = "audio/" + g;
