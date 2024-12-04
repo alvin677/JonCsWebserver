@@ -13,7 +13,7 @@ This webserver *should* be excellent for static files. If you only want to serve
 Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
 
 ## C# backend
-You can write C# files for backend, this is the syntax:
+You can write C# files for backend, write files ending with `._cs`:
 ```cs
 public static async Task Run(HttpContext context, string path) {
   context.Response.ContentType = "text/plain";
@@ -22,7 +22,7 @@ public static async Task Run(HttpContext context, string path) {
 ```
 
 ## PHP backend
-PHP is a very popular backend language, so you can write .php files like the following and they will be compiled using **PeachPie**, so they shall not affect performance significantly:
+PHP is a very popular backend language, so you can write `.php` files like the following and they will be compiled using **PeachPie**, so they shall not affect performance significantly:
 ```php
 <?php
 namespace Is_PhpScript;
