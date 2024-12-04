@@ -23,6 +23,9 @@ using static Startup;
 using System.Text.Json.Nodes;
 using System.Xml;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
 
 public class Program
 {
@@ -37,6 +40,7 @@ public class Program
     public static void Main(string[] args)
     {
         config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+        config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
         WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
         BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? config.BackendDir;
@@ -121,6 +125,11 @@ public class Program
                     Console.WriteLine("Collecting..");
                     GC.Collect();
                     Console.WriteLine("Collected.");
+                }else if (Args[0] == "reload")
+                {
+                    config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+                    config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
+                    Console.WriteLine("Reloaded!");
                 }
             }
         });
@@ -173,10 +182,10 @@ public class Program
                 webBuilder.ConfigureKestrel((context, options) =>
                 {
                     options.AddServerHeader = false;
-                    //options.Limits.MaxConcurrentConnections = 100000;
-                    options.Limits.MaxConcurrentUpgradedConnections = 10000;
-                    //options.Limits.MinRequestBodyDataRate = null; // Disable request rate limits
-                    //options.Limits.MaxRequestBodySize = null;    // Allow unlimited body size
+                    options.Limits.MaxConcurrentConnections = config.MaxConcurrentConnections;
+                    options.Limits.MaxConcurrentUpgradedConnections = config.MaxConcurrentUpgradedConnections;
+                    options.Limits.MinRequestBodyDataRate = config.MinRequestBodyDataRate; // Disable request rate limits
+                    options.Limits.MaxRequestBodySize = config.MaxRequestBodySize;    // Allow unlimited body size
                     //ThreadPool.SetMinThreads(1000, 1000);
 
                     options.ConfigureHttpsDefaults(adapterOptions =>
@@ -346,12 +355,16 @@ public class Startup
         {
             endpoints.Map("/{**catchAll}", async context =>
             {
-                foreach(KeyValuePair<string,string> header in Program.config.DefaultHeaders)
+                List<string> path = GetDomainBasedPath(context); // Extract the request path
+                if(path.Count > Program.config.MaxDirDepth)
+                {
+                    context.Response.StatusCode = 414;
+                    return;
+                }
+                foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
                 {
                     context.Response.Headers[header.Key] = header.Value;
                 }
-
-                List<string> path = GetDomainBasedPath(context); // Extract the request path
                 if (DateTime.TryParse(context.Request.Headers.IfModifiedSince, out DateTime LM))
                 {
                     if (FileIndex.TryGetValue(string.Join("/", path), out DateTime LastMod))
@@ -419,6 +432,7 @@ public class Startup
     }
     private static async Task DefHandle(HttpContext context, string file)
     {
+        if (context.Request.Method == HttpMethods.Options) return;
         await context.Response.SendFileAsync(file);
     }
     private static async Task DefDownload(HttpContext context, string file)
@@ -427,6 +441,7 @@ public class Startup
         string[] pa = file.Split("/");
         if (pa.Length > 0) fn = pa[pa.Length - 1];
         context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
+        if (context.Request.Method == HttpMethods.Options) return;
         await context.Response.SendFileAsync(file);
     }
     static async Task<JsonObject?> GetSess(string? id) {
@@ -474,7 +489,7 @@ public class Startup
     private static readonly HttpClient httpClient = new HttpClient(handler);
     private async Task ForwardRequestToNodeJs(HttpContext context, string backendFilePath)
     {
-        string targetUrl = $"{Program.NjsEndpoint.Replace("{domain}", context.Request.Host.Value)}{backendFilePath}";
+        string targetUrl = Program.NjsEndpoint.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
         await ForwardRequestTo(context, targetUrl);
     }
     private async Task ForwardRequestTo(HttpContext context, string targetUrl)
@@ -484,30 +499,48 @@ public class Startup
             HttpRequestMessage requestMessage = new HttpRequestMessage
             {
                 Method = new HttpMethod(context.Request.Method),
-                RequestUri = new Uri(targetUrl + context.Request.Path + context.Request.QueryString),
-                Content = new StreamContent(context.Request.Body)
+                RequestUri = new Uri(targetUrl),
+                Version = HttpVersion.Version20,
+                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                // Content = new StreamContent(context.Request.Body)
             };
+            if (context.Request.Method != HttpMethods.Get && context.Request.Method != HttpMethods.Head && context.Request.Method != HttpMethods.Options)
+            {
+                context.Request.EnableBuffering();
+                context.Request.Body.Position = 0;
+                requestMessage.Headers.TransferEncodingChunked = true;
+                requestMessage.Content = new StreamContent(context.Request.Body);
+                //requestMessage.Content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/octet-stream");
+            }
+
             foreach (var header in context.Request.Headers)
             {
                 requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
             }
-            var responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
-            context.Response.StatusCode = (int)responseMessage.StatusCode;
-            foreach (var header in responseMessage.Headers)
-            {
-                context.Response.Headers[header.Key] = header.Value.ToArray();
-            }
-            foreach (var header in responseMessage.Content.Headers)
-            {
-                context.Response.Headers[header.Key] = header.Value.ToArray();
-            }
+            requestMessage.Headers.TryAddWithoutValidation(":authority", requestMessage.RequestUri.Host.Split(":")[0]);
+            requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
+            requestMessage.Headers.TryAddWithoutValidation(":method", context.Request.Method);
+            requestMessage.Headers.TryAddWithoutValidation(":scheme", context.Request.Scheme);
+            requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", context.Connection.RemoteIpAddress?.ToString());
 
-            // Stream the response body back to the client
-            using (var responseStream = await responseMessage.Content.ReadAsStreamAsync())
+            using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead))
             {
-                await responseStream.CopyToAsync(context.Response.Body);
-            }
+                context.Response.StatusCode = (int)responseMessage.StatusCode;
+                foreach (var header in responseMessage.Headers)
+                {
+                    context.Response.Headers[header.Key] = header.Value.ToArray();
+                }
+                foreach (var header in responseMessage.Content.Headers)
+                {
+                    context.Response.Headers[header.Key] = header.Value.ToArray();
+                }
 
+                // Stream the response body back to the client
+                using (var responseStream = await responseMessage.Content.ReadAsStreamAsync())
+                {
+                    await responseStream.CopyToAsync(context.Response.Body);
+                }
+            }
             return;
         }catch(Exception e)
         {
@@ -519,7 +552,7 @@ public class Startup
     }
     private async Task ForwardRequestToBunJs(HttpContext context, string backendFilePath)
     {
-        string targetUrl = $"{Program.BunEndpoint.Replace("{domain}", context.Request.Host.Value)}{backendFilePath}";
+        string targetUrl = Program.BunEndpoint.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path + context.Request.QueryString;
         await ForwardRequestTo(context, targetUrl);
     }
 
@@ -575,7 +608,7 @@ public class Startup
             string Ext = getExt[getExt.Length - 1];
             if (Ext == "_cs")
             {
-                try { CompileAndAddFunction(filePath); } catch (Exception) { }
+                try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
                 return;
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
@@ -694,7 +727,13 @@ public class Worker : BackgroundService
 
 public class Config
 {
+    public long? MaxConcurrentConnections { get; set; }
+    public long? MaxConcurrentUpgradedConnections { get; set; }
+    public long? MaxRequestBodySize { get; set;}
+    public double bytesPerSecond { get; set; }
+    public int gracePeriod { get; set; }
     public int ClearSessEveryXMin { get; set; }
+    public ushort MaxDirDepth { get; set; }
     public string WWWdir { get; set; }
     public string BackendDir { get; set; }
     public string SessDir { get; set; }
@@ -705,13 +744,22 @@ public class Config
     public List<string> DownloadIfExtension { get; set; }
     public Dictionary<string,string> ExtTypes { get; private set; } = new Dictionary<string, string>();
     public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
+    [JsonIgnore]
+    public MinDataRate? MinRequestBodyDataRate { get; set; }
+
     static JsonSerializerSettings settings = new Newtonsoft.Json.JsonSerializerSettings
     {
         ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
     };
     public void LoadDefaults()
     {
+        MaxConcurrentConnections = null;
+        MaxConcurrentUpgradedConnections = 10000;
+        MaxRequestBodySize = 30000000;
+        bytesPerSecond = 240;
+        gracePeriod = 5;
         ClearSessEveryXMin = 5;
+        MaxDirDepth = 15;
         WWWdir = "";
         BackendDir = "/var/www";
         SessDir = "/websavedata/sess/";
@@ -752,6 +800,8 @@ public class Config
         DefaultHeaders["Accept-Ranges"] = "bytes";
         DefaultHeaders["Access-Control-Allow-Origin"] = "*";
         DefaultHeaders["cache-control"] = "max-age=31536000";
+
+        MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
     }
     public static Config Load(string filePath)
     {
