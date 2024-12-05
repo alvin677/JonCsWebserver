@@ -24,6 +24,7 @@ public static async Task Run(HttpContext context, string path) {
 ```
 You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library:
 ```cs
+using Microsoft.AspNetCore.Http;
 public class Is_CsScript {
   public static async Task Run(HttpContext context, string path) {
     context.Response.ContentType = "text/plain";
