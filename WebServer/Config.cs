@@ -82,6 +82,10 @@ namespace WebServer
                 ["njs"] = "http://{domain}:3000",
                 ["bun"] = "http://{domain}:3000"
             };
+            foreach (string g in new string[] { "png", "jpeg", "gif", "webp", "ico" })
+            {
+                ExtTypes[g] = "image/" + g;
+            }
             foreach (string g in new string[] { "wav", "ogg" })
             {
                 ExtTypes[g] = "audio/" + g;
