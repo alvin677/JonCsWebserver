@@ -2,7 +2,7 @@
 Performance-focused C# web server, with backend file scripting support and customizable.
 Feel free to modify the code to make it more performant :)
 
-`./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files`<br/>
+`./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
 `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --backend=/var/www/dynamic_files`<br/>
 The args you don't send through command are loaded from config instead.
 
