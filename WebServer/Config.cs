@@ -70,9 +70,6 @@ namespace WebServer
                 ["txt"] = "text/plain",
                 ["log"] = "text/plain",
                 ["css"] = "text/css",
-                ["js"] = "application/javascript",
-                ["json"] = "application/json",
-                ["pdf"] = "application/pdf",
                 ["jpg"] = "image/jpeg",
                 ["svg"] = "image/svg+xml",
                 ["mp3"] = "audio/mpeg",
@@ -82,6 +79,10 @@ namespace WebServer
                 ["njs"] = "http://{domain}:3000",
                 ["bun"] = "http://{domain}:3000"
             };
+            foreach (string g in new string[] { "js", "json", "pdf", "zip", "jar", "dll", "exe" })
+            {
+                ExtTypes[g] = "application/" + g;
+            }
             foreach (string g in new string[] { "png", "jpeg", "gif", "webp", "ico" })
             {
                 ExtTypes[g] = "image/" + g;
