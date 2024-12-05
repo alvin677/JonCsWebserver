@@ -22,7 +22,7 @@ public static async Task Run(HttpContext context, string path) {
   await context.Response.WriteAsync($"Hello there! Path: {path}");
 }
 ```
-You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library :
+You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library:
 ```cs
 public class Is_CsScript {
   public static async Task Run(HttpContext context, string path) {
