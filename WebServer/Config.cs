@@ -23,10 +23,10 @@ namespace WebServer
         public string CertDir { get; set; } = "";
         public string WWWdir { get; set; } = "";
         public string BackendDir { get; set; } = "";
-        public string SessDir = "";
-        public string Rand_Alphabet = "";
-        public string FilterFromDomain = "";
-        public string DomainFilterTo = "";
+        public string SessDir { get; set; } = "";
+        public string Rand_Alphabet { get; set; } = "";
+        public string FilterFromDomain { get; set; } = "";
+        public string DomainFilterTo { get; set; } = "";
         public string ThreadingDll { get; set; } = "";
         public string HttpDll { get; set; } = "";
         public List<string> DownloadIfExtension { get; set; } = new List<string>();
@@ -63,7 +63,7 @@ namespace WebServer
             "jar",
             "dll",
             "exe"
-        };
+            };
             ExtTypes = new Dictionary<string, string>()
             {
                 ["html"] = "text/html",
@@ -96,7 +96,7 @@ namespace WebServer
             DefaultHeaders["Access-Control-Allow-Origin"] = "*";
             DefaultHeaders["cache-control"] = "max-age=31536000";
 
-            MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
+            // MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
         }
         public static Config Load(string filePath)
         {
