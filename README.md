@@ -8,7 +8,7 @@ The args you don't send through command are loaded from config instead.
 
 ## Static files
 This webserver *should* be excellent for static files. If you only want to serve static files you can use the config file to set the "WWWdir" to a directory.
-`./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --webPath=/staticfiles`
+You can also use the `--webPath` startup arg: `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --webPath=/staticfiles`
 
 ## Proxy
 Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
