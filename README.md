@@ -15,14 +15,14 @@ Need to redirect specific files to another endpoint, such as node or bun? You ca
 
 ## C# backend
 You can write C# files for backend.
-For direct compilation write files ending with `._cs`:
+(**broken**) For direct compilation write files ending with `._cs`:
 ```cs
 public static async Task Run(HttpContext context, string path) {
   context.Response.ContentType = "text/plain";
   await context.Response.WriteAsync($"Hello there! Path: {path}");
 }
 ```
-You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library:
+(**works since version 0.76**) You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library:
 ```cs
 public class Is_CsScript {
   public static async Task Run(Microsoft.AspNetCore.Http.HttpContext context, string path) {
