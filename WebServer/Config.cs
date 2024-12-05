@@ -1,10 +1,5 @@
 ﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace WebServer
 {
@@ -23,7 +18,8 @@ namespace WebServer
         public string CertDir { get; set; } = "";
         public string WWWdir { get; set; } = "";
         public string BackendDir { get; set; } = "";
-        public string SessDir { get; set; } = "";
+        public string SessionsDir { get; set; } = "";
+        public string SessionCookieName { get; set; } = "";
         public string Rand_Alphabet { get; set; } = "";
         public string FilterFromDomain { get; set; } = "";
         public string DomainFilterTo { get; set; } = "";
@@ -52,7 +48,8 @@ namespace WebServer
             CertDir = "/etc/letsencrypt/live/";
             WWWdir = "";
             BackendDir = "/var/www";
-            SessDir = "/var/sess/";
+            SessionsDir = "/var/sess/";
+            SessionCookieName = "SSID";
             FilterFromDomain = ".";
             DomainFilterTo = "";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

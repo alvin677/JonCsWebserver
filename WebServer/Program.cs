@@ -5,26 +5,12 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 using Microsoft.AspNetCore.ResponseCompression;
-using System.IO.Compression;
-using System.Text.Json.Nodes;
-using Newtonsoft.Json;
-using System.Net.Http.Headers;
-using Microsoft.CodeAnalysis.CSharp.Scripting;
-using Microsoft.CodeAnalysis.Scripting;
-using System.Reflection;
-using CSScriptLib;
-using System.Reflection.Metadata;
-using Microsoft.AspNetCore.WebSockets;
-using System.Net.WebSockets;
-using System.Text;
 using WebServer;
+using System.Collections.Immutable;
 
 public class Program
 {
@@ -40,6 +26,7 @@ public class Program
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
         WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
         BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? config.BackendDir;
+        bool TestSess = args.FirstOrDefault(arg => arg.StartsWith("--testSess")) != null;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
         if(HelpCmd)
         {
@@ -50,6 +37,10 @@ public class Program
                 "--ip=127.0.0.1 | Change the IP. Default value is any.\n" +
                 "--httpPort=80,8080 | Change the port(s) for HTTP. Comma-seperated. Default value is 80.\n" +
                 "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.");
+        }
+        if (TestSess) {
+            Dictionary<string,string>? data = Session.GetSess("Test").Result;
+            if(data != null) _ = Session.SaveSess(data["id"], data);
         }
         LoadCerts(certPath);
         IHost web = CreateHostBuilder(args).Build();
