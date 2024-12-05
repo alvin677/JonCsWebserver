@@ -247,14 +247,14 @@ public class Program
                     // HTTP listener
                     for (byte i = 0; i < HttpPorts.Count; i++)
                     {
-                        Console.WriteLine("Listening for HTTP on port " + HttpPorts[i].ToString());
+                        Console.WriteLine("Listening for HTTP on IP " + Ipaddress + " and port " + HttpPorts[i].ToString());
                         options.Listen(Ipaddress, HttpPorts[i]);  // HTTP (non-secure)
                     }
 
                     // HTTPS listener with dynamic TLS based on SNI
                     for (byte i = 0; i < HttpsPorts.Count; i++) options.Listen(Ipaddress, HttpsPorts[i], listenOptions =>
                     {
-                        Console.WriteLine("Listening for HTTPS on port " + HttpsPorts[i].ToString());
+                        Console.WriteLine("Listening for HTTPS on IP " + Ipaddress + " and port " + HttpsPorts[i].ToString());
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
                         listenOptions.UseHttps(httpsOptions => {
                             httpsOptions.ServerCertificateSelector = (features, name) =>
