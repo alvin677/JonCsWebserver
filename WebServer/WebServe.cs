@@ -1,0 +1,462 @@
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.CodeAnalysis.CSharp.Scripting;
+using Microsoft.CodeAnalysis.Scripting;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Linq;
+using System.Net.WebSockets;
+using System.Reflection;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+using System.Net.Http.Headers;
+using System.Net;
+using Microsoft.AspNetCore.WebSockets;
+
+namespace WebServer
+{
+    public class Startup
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br />${0}<br /><p>Maybe we're working on adding this page.</p>${1}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
+        public static readonly ConcurrentDictionary<string, DateTime> FileIndex = new ConcurrentDictionary<string, DateTime>();
+        public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>();
+        public static ConcurrentDictionary<string, JsonObject> Sessions = new ConcurrentDictionary<string, JsonObject>();
+        private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>();
+        private static Timer _cleanupTimer;
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddRouting();
+            services.AddWebSockets(config => {
+                config.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketTimeout);
+            });
+            // services.AddSingleton<BackgroundTaskQueue>();
+            // services.AddHostedService<Worker>();
+
+            services.AddResponseCompression(options =>
+            {
+                options.EnableForHttps = true;
+                options.Providers.Add<GzipCompressionProvider>();
+                options.Providers.Add<BrotliCompressionProvider>();
+                options.Providers.Add<DeflateCompressionProvider>();
+            });
+
+            services.Configure<GzipCompressionProviderOptions>(options =>
+            {
+                options.Level = System.IO.Compression.CompressionLevel.Fastest;
+            });
+        }
+        public class DeflateCompressionProvider : ICompressionProvider
+        {
+            public string EncodingName => "deflate";
+
+            public bool SupportsFlush => true;
+
+            public Stream CreateStream(Stream outputStream)
+            {
+                return new DeflateStream(outputStream, CompressionLevel.Optimal, leaveOpen: true);
+            }
+        }
+
+        public void Configure(IApplicationBuilder app)
+        {
+            if (Program.WWWdir != "")
+            {
+                app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(Path.Combine(Program.WWWdir)) //,
+                                                                                          //RequestPath = "/"
+                });
+            }
+            app.UseResponseCompression();
+            app.UseWebSockets();
+            app.UseRouting();
+            if (Program.BackendDir != "") app.UseEndpoints(endpoints =>
+            {
+                endpoints.Map("/{**catchAll}", async context =>
+                {
+                    List<string> path = GetDomainBasedPath(context); // Extract the request path
+                    if (path.Count > Program.config.MaxDirDepth)
+                    {
+                        context.Response.StatusCode = 414;
+                        return;
+                    }
+                    foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
+                    {
+                        context.Response.Headers[header.Key] = header.Value;
+                    }
+                    if (DateTime.TryParse(context.Request.Headers.IfModifiedSince, out DateTime LM))
+                    {
+                        if (FileIndex.TryGetValue(string.Join("/", path), out DateTime LastMod))
+                        {
+                            if (LastMod <= LM)
+                            {
+                                context.Response.StatusCode = 304;
+                                return;
+                            }
+                        }
+                    }
+                    string FileToUse = string.Join("/", path);
+                    if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1].Substring(path[path.Count - 1].Length - 1) != "/")) // linking directly to a file or a directory
+                    {
+                        while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index._cs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.bun"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.phpdll"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
+                        {
+                            path.RemoveAt(path.Count - 1);
+                        }
+                    }
+                    if (_Handler != null)
+                    {
+                        if (FileIndex.TryGetValue(FileToUse, out DateTime LastMod))
+                        {
+                            context.Response.Headers["last-modified"] = LastMod.ToString("R");
+                            if (LastMod <= LM)
+                            {
+                                context.Response.StatusCode = 304;
+                                return;
+                            }
+                        }
+                        string[] getExt = FileToUse.Split('.');
+                        string Ext = getExt[getExt.Length - 1];
+                        if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
+                        {
+                            context.Response.Headers["content-type"] = ctype;
+                        }
+                        await _Handler(context, FileToUse);
+                        return;
+                    }
+
+                    context.Response.StatusCode = 404;
+                    await context.Response.WriteAsync(error404.Replace("${0}", path[1] == "jontvme" ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                });
+            });
+            httpClient.Timeout = TimeSpan.FromSeconds(300);
+
+            foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
+            foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
+            {
+                Extensions[ext.Key] = (context, path) => {
+                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
+                    return ForwardRequestTo(context, targetUrl);
+                };
+            }
+            _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+
+
+            IndexFiles(Program.BackendDir);
+            SetupFileWatcher(Program.BackendDir);
+        }
+        public static List<string> GetDomainBasedPath(HttpContext context)
+        {
+            // Optionally, append the requested path if needed
+            string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
+            if (requestPath != null && requestPath.Contains("..")) requestPath = null;
+            List<string> fullPath = [Program.BackendDir, context.Request.Host.Value.Split(':')[0].Replace(".", "")];
+            if (requestPath != null) fullPath.AddRange(requestPath);
+
+            return fullPath;
+        }
+        private static async Task DefHandle(HttpContext context, string file)
+        {
+            if (context.Request.Method == HttpMethods.Options) return;
+            await context.Response.SendFileAsync(file);
+        }
+        private static async Task DefDownload(HttpContext context, string file)
+        {
+            string fn = "undefined";
+            string[] pa = file.Split("/");
+            if (pa.Length > 0) fn = pa[pa.Length - 1];
+            context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
+            if (context.Request.Method == HttpMethods.Options) return;
+            await context.Response.SendFileAsync(file);
+        }
+        private static HttpClientHandler handler = new HttpClientHandler();
+        private static readonly HttpClient httpClient = new HttpClient(handler);
+        private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
+        private async Task ForwardRequestTo(HttpContext context, string targetUrl)
+        {
+            if (context.WebSockets.IsWebSocketRequest)
+            {
+                WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                var buffer = new byte[1024 * 4];
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Text)
+                    {
+                        string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                        await webSocket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes($"Echo: {message}")), WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+                }
+                while (!result.CloseStatus.HasValue);
+
+                await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
+                return;
+            }
+            try
+            {
+                HttpRequestMessage requestMessage = new HttpRequestMessage
+                {
+                    Method = new HttpMethod(context.Request.Method),
+                    RequestUri = new Uri(targetUrl),
+                    Version = HttpVersion.Version20,
+                    VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                    // Content = new StreamContent(context.Request.Body)
+                };
+                if (context.Request.Method != HttpMethods.Get && context.Request.Method != HttpMethods.Head && context.Request.Method != HttpMethods.Options)
+                {
+                    context.Request.EnableBuffering();
+                    context.Request.Body.Position = 0;
+                    requestMessage.Headers.TransferEncodingChunked = true;
+                    requestMessage.Content = new StreamContent(context.Request.Body);
+                    if (context.Request.ContentType != null)
+                    {
+                        string[] contentType = context.Request.ContentType.Split(';');
+                        string mediaType = contentType[0].Trim(); // e.g., "text/plain"
+                        string? charset = contentType.Length > 1 ? contentType[1].Trim() : null; // e.g., "charset=UTF-8"
+
+                        var mediaTypeHeader = new MediaTypeHeaderValue(mediaType);
+                        if (charset != null)
+                        {
+                            mediaTypeHeader.CharSet = charset.Substring(charset.IndexOf('=') + 1);
+                        }
+
+                        requestMessage.Content.Headers.ContentType = mediaTypeHeader;
+                    }
+                }
+
+                foreach (var header in context.Request.Headers)
+                {
+                    requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+                }
+                requestMessage.Headers.TryAddWithoutValidation(":authority", requestMessage.RequestUri.Host.Split(":")[0]);
+                requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
+                requestMessage.Headers.TryAddWithoutValidation(":method", context.Request.Method);
+                requestMessage.Headers.TryAddWithoutValidation(":scheme", context.Request.Scheme);
+                requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", context.Connection.RemoteIpAddress?.ToString());
+
+                using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    context.Response.StatusCode = (int)responseMessage.StatusCode;
+                    foreach (var header in responseMessage.Headers)
+                    {
+                        context.Response.Headers[header.Key] = header.Value.ToArray();
+                    }
+                    foreach (var header in responseMessage.Content.Headers)
+                    {
+                        context.Response.Headers[header.Key] = header.Value.ToArray();
+                    }
+
+                    // Stream the response body back to the client
+                    using (var responseStream = await responseMessage.Content.ReadAsStreamAsync())
+                    {
+                        await responseStream.CopyToAsync(context.Response.Body);
+                    }
+                }
+                return;
+            }
+            catch (Exception e)
+            {
+                context.Response.StatusCode = 500;
+                await context.Response.WriteAsync("Sorry. An error occurred.");
+                Console.WriteLine(e);
+                return;
+            }
+        }
+
+        public static void IndexFiles(string rootDirectory)
+        {
+            foreach (string file in Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories))
+            {
+                string[] getExt = file.Split('.');
+                string Ext = getExt[getExt.Length - 1];
+                if (Ext == "_cs" && Program.config.Enable_CS)
+                {
+                    try { CompileAndAddFunction(file); } catch (Exception) { }
+                    continue;
+                }
+                else if (Program.config.Enable_PHP)
+                {
+                    if (Ext == "php")
+                    {
+                        try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception) { }
+                        continue;
+                    }
+                    else if (Ext == "phpdll")
+                    {
+                        try { LoadPhpAssembly(file); } catch (Exception) { }
+                        continue;
+                    }
+                }
+                if (Extensions.TryGetValue(Ext, out var Handler))
+                {
+                    FileLead[file] = Handler;
+                }
+                else
+                {
+                    FileLead[file] = DefHandle;
+                    FileInfo fileInfo = new FileInfo(file);
+                    FileIndex[file] = fileInfo.LastWriteTimeUtc;
+                }
+            }
+        }
+
+        static void SetupFileWatcher(string rootDirectory)
+        {
+            FileSystemWatcher watcher = new FileSystemWatcher
+            {
+                Path = rootDirectory,
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
+            };
+
+            watcher.Created += (sender, e) => UpdateIndex(e.FullPath);
+            watcher.Changed += (sender, e) => UpdateIndex(e.FullPath);
+            watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath);
+            watcher.Renamed += (sender, e) =>
+            {
+                RemoveFromIndex(e.OldFullPath);
+                UpdateIndex(e.FullPath);
+            };
+
+            watcher.EnableRaisingEvents = true;
+        }
+
+        static void UpdateIndex(string filePath)
+        {
+            if (File.Exists(filePath))
+            {
+                string[] getExt = filePath.Split('.');
+                string Ext = getExt[getExt.Length - 1];
+                if (Ext == "_cs" && Program.config.Enable_CS)
+                {
+                    try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    return;
+                }
+                else if (Program.config.Enable_PHP && Ext == "php")
+                {
+                    try { if (GenPhpAssembly(filePath)) LoadPhpAssembly(filePath); } catch (Exception) { }
+                    return;
+                }
+                if (Extensions.TryGetValue(Ext, out var Handler))
+                {
+                    FileLead[filePath] = Handler;
+                }
+                else
+                {
+                    FileLead[filePath] = DefHandle;
+                    FileInfo fileInfo = new FileInfo(filePath);
+                    FileIndex[filePath] = fileInfo.LastWriteTimeUtc;
+                }
+            }
+        }
+
+        static void RemoveFromIndex(string filePath)
+        {
+            FileIndex.TryRemove(filePath, out _);
+            FileLead.TryRemove(filePath, out _);
+        }
+
+        public static async void CompileAndAddFunction(string filePath)
+        {
+            // Read the code from the file
+            string code = File.ReadAllText(filePath);
+            // Define assembly paths for HttpContext and Task
+            var taskAssembly = typeof(System.Threading.Tasks.Task).Assembly;
+            var taskAssemblyLocation = taskAssembly.Location;  // This works even in packed scenarios
+            var metadataReference = MetadataReference.CreateFromFile(taskAssemblyLocation);
+
+            var references = new[]
+    {
+    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+    MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location), // Adds System.Threading.Tasks
+    MetadataReference.CreateFromFile(typeof(System.Net.Http.HttpClient).Assembly.Location) // Adds other dependencies like HttpClient
+};
+            ScriptOptions options = ScriptOptions.Default.WithReferences(
+            MetadataReference.CreateFromFile(Program.config.ThreadingDll),
+            MetadataReference.CreateFromFile(Program.config.HttpDll)
+        ).WithImports("System.Threading.Tasks", "Microsoft.AspNetCore.Http");
+            // Create a script and compile it
+            var script = CSharpScript.Create<Func<HttpContext, string, Task>>(code, options);
+            script.Compile();
+            var result = await script.RunAsync();
+            // Add to the dictionary
+            FileLead[filePath] = result.ReturnValue;
+        }
+
+        public static void LoadPhpAssembly(string filePath)
+        {
+            Assembly assembly = Assembly.Load(File.ReadAllBytes(filePath + "dll"));
+
+            // Find a specific class or method (depending on how your PHP script is structured)
+            Type? type = assembly.GetType("Is_PhpScript"); // Use the namespace/class name in your PHP file.
+            if (type == null)
+            {
+                Console.WriteLine("Make sure to use the namespace Is_PhpScript!");
+                return;
+            }
+            var method = type.GetMethod("Run"); // Assuming "Run" is the entry point.
+
+            // Create a delegate for the method (this assumes it's compatible)
+            Func<HttpContext, string, Task> phpFunction = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
+                typeof(Func<HttpContext, string, Task>), method
+            );
+
+            // Add the delegate to your dictionary
+            FileLead[filePath] = phpFunction;
+        }
+        public static bool GenPhpAssembly(string filePath)
+        {
+            try
+            {
+                // Create a new process
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "ppc", // Assumes "ppc" is in your PATH
+                        Arguments = $"{filePath} -o {filePath}dll",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                // Capture output
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                // Check if there were errors
+                if (process.ExitCode != 0)
+                {
+                    return false;
+                }
+
+                // No errors, return success
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+    }
+    public class Globals
+    {
+        public HttpContext context;
+        public string path;
+    }
+}
