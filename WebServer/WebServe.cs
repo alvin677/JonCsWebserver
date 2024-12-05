@@ -12,7 +12,6 @@ using System.IO.Compression;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
-using System.Text.Json.Nodes;
 using System.Net.Http.Headers;
 using System.Net;
 using Microsoft.AspNetCore.WebSockets;
@@ -48,7 +47,7 @@ namespace WebServer
 
             services.Configure<GzipCompressionProviderOptions>(options =>
             {
-                options.Level = System.IO.Compression.CompressionLevel.Fastest;
+                options.Level = Program.config.CompressionLevel;
             });
         }
         public class DeflateCompressionProvider : ICompressionProvider
@@ -280,12 +279,20 @@ namespace WebServer
             {
                 string[] getExt = file.Split('.');
                 string Ext = getExt[getExt.Length - 1];
-                if (Ext == "_cs" && Program.config.Enable_CS)
+                if (Program.config.Enable_CS)
                 {
-                    try { CompileAndAddFunction(file); } catch (Exception) { }
-                    continue;
+                    if (Ext == "_cs")
+                    {
+                        try { CompileAndAddFunction(file); } catch (Exception) { }
+                        continue;
+                    }
+                    else if (Ext == "_csdll")
+                    {
+                        try { LoadCompiledFunc(file); } catch (Exception) { }
+                        continue;
+                    }
                 }
-                else if (Program.config.Enable_PHP)
+                if (Program.config.Enable_PHP)
                 {
                     if (Ext == "php")
                     {
@@ -338,12 +345,20 @@ namespace WebServer
             {
                 string[] getExt = filePath.Split('.');
                 string Ext = getExt[getExt.Length - 1];
-                if (Ext == "_cs" && Program.config.Enable_CS)
+                if (Program.config.Enable_CS)
                 {
-                    try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
-                    return;
+                    if (Ext == "_cs")
+                    {
+                        try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                        return;
+                    }
+                    else if (Ext == "_csdll")
+                    {
+                        try { LoadCompiledFunc(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                        return;
+                    }
                 }
-                else if (Program.config.Enable_PHP && Ext == "php")
+                if (Program.config.Enable_PHP && Ext == "php")
                 {
                     try { if (GenPhpAssembly(filePath)) LoadPhpAssembly(filePath); } catch (Exception) { }
                     return;
@@ -372,26 +387,45 @@ namespace WebServer
             // Read the code from the file
             string code = File.ReadAllText(filePath);
             // Define assembly paths for HttpContext and Task
-            var taskAssembly = typeof(System.Threading.Tasks.Task).Assembly;
-            var taskAssemblyLocation = taskAssembly.Location;  // This works even in packed scenarios
-            var metadataReference = MetadataReference.CreateFromFile(taskAssemblyLocation);
 
-            var references = new[]
-    {
-    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-    MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location), // Adds System.Threading.Tasks
-    MetadataReference.CreateFromFile(typeof(System.Net.Http.HttpClient).Assembly.Location) // Adds other dependencies like HttpClient
-};
             ScriptOptions options = ScriptOptions.Default.WithReferences(
-            MetadataReference.CreateFromFile(Program.config.ThreadingDll),
-            MetadataReference.CreateFromFile(Program.config.HttpDll)
+                MetadataReference.CreateFromFile(Program.config.HttpDll), MetadataReference.CreateFromFile(Program.config.ThreadingDll)
         ).WithImports("System.Threading.Tasks", "Microsoft.AspNetCore.Http");
             // Create a script and compile it
             var script = CSharpScript.Create<Func<HttpContext, string, Task>>(code, options);
-            script.Compile();
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            foreach (Diagnostic Dia in script.Compile())
+            {
+                Console.WriteLine(Dia.ToString());
+            }
+            Console.ResetColor();
             var result = await script.RunAsync();
-            // Add to the dictionary
-            FileLead[filePath] = result.ReturnValue;
+            var func = result.ReturnValue;
+            if (func is Func<HttpContext, string, Task>)
+                // Add to the dictionary
+                FileLead[filePath] = func;
+        }
+
+        public static void LoadCompiledFunc(string file)
+        {
+            Assembly assembly = Assembly.Load(File.ReadAllBytes(file));
+            Type? type = assembly.GetType("Is_CsScript");
+            if (type == null)
+            {
+                Console.WriteLine("Make sure to use the namespace/class Is_CsScript for ._csdll!");
+                return;
+            }
+            MethodInfo? method = type.GetMethod("Run");
+            if (method == null)
+            {
+                Console.WriteLine("Make a function called Run(HttpContext context, string path)");
+                return;
+            }
+            Func<HttpContext, string, Task> func = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
+    typeof(Func<HttpContext, string, Task>), method
+);
+
+            FileLead[file[..^3]] = func;
         }
 
         public static void LoadPhpAssembly(string filePath)
@@ -402,7 +436,7 @@ namespace WebServer
             Type? type = assembly.GetType("Is_PhpScript"); // Use the namespace/class name in your PHP file.
             if (type == null)
             {
-                Console.WriteLine("Make sure to use the namespace Is_PhpScript!");
+                Console.WriteLine("Make sure to use the namespace Is_PhpScript for .phpdll-files!");
                 return;
             }
             var method = type.GetMethod("Run"); // Assuming "Run" is the entry point.
@@ -412,7 +446,6 @@ namespace WebServer
                 typeof(Func<HttpContext, string, Task>), method
             );
 
-            // Add the delegate to your dictionary
             FileLead[filePath] = phpFunction;
         }
         public static bool GenPhpAssembly(string filePath)
@@ -453,10 +486,5 @@ namespace WebServer
                 return false;
             }
         }
-    }
-    public class Globals
-    {
-        public HttpContext context;
-        public string path;
     }
 }

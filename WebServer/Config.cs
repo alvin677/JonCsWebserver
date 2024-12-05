@@ -25,6 +25,7 @@ namespace WebServer
         public string DomainFilterTo { get; set; } = "";
         public string ThreadingDll { get; set; } = "";
         public string HttpDll { get; set; } = "";
+        public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
         public List<string> DownloadIfExtension { get; set; } = new List<string>();
         public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>();
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
@@ -55,6 +56,7 @@ namespace WebServer
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             ThreadingDll = "./System.Threading.Tasks.dll";
             HttpDll = "./Microsoft.AspNetCore.Http.dll";
+            CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = new List<string>() {
             "zip",
             "jar",

@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <TrimmerRootAssembly Include="System.Runtime" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CS-Script.Core" Version="2.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.1.34" />
     <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.1.3" />
