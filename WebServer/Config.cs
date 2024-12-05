@@ -23,9 +23,10 @@ namespace WebServer
         public string CertDir { get; set; } = "";
         public string WWWdir { get; set; } = "";
         public string BackendDir { get; set; } = "";
-        public string SessDir { get; set; } = "";
-        public string Rand_Alphabet { get; set; } = "";
+        public string SessDir = "";
+        public string Rand_Alphabet = "";
         public string FilterFromDomain = "";
+        public string DomainFilterTo = "";
         public string ThreadingDll { get; set; } = "";
         public string HttpDll { get; set; } = "";
         public List<string> DownloadIfExtension { get; set; } = new List<string>();
@@ -53,6 +54,7 @@ namespace WebServer
             BackendDir = "/var/www";
             SessDir = "/var/sess/";
             FilterFromDomain = ".";
+            DomainFilterTo = "";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             ThreadingDll = "./System.Threading.Tasks.dll";
             HttpDll = "./Microsoft.AspNetCore.Http.dll";
