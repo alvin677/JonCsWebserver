@@ -144,6 +144,7 @@ public class Program
         });
         Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed. :)");
         web.Run();
+        Console.WriteLine("Press enter to exit..");
         Console.ReadLine();
     }
     public static void GetCPUUsage()

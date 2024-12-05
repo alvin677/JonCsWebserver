@@ -141,7 +141,7 @@ namespace WebServer
             // Optionally, append the requested path if needed
             string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
             if (requestPath != null && requestPath.Contains("..")) requestPath = null;
-            List<string> fullPath = [Program.BackendDir, context.Request.Host.Value.Split(':')[0].Replace(".", "")];
+            List<string> fullPath = [Program.BackendDir, context.Request.Host.Value.Split(':')[0].Replace(Program.config.FilterFromDomain, "")];
             if (requestPath != null) fullPath.AddRange(requestPath);
 
             return fullPath;
