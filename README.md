@@ -13,7 +13,7 @@ This webserver *should* be excellent for static files. If you only want to serve
 ## Proxy
 Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
 
-## C# backend
+## C# backend (Enable_CS: true)
 You can write C# files for backend.
 (**broken**) For direct compilation write files ending with `._cs`:
 ```cs
@@ -32,7 +32,7 @@ public class Is_CsScript {
 }
 ```
 
-## PHP backend
+## PHP backend (Enable_PHP: true)
 PHP is a very popular backend language, so you can write `.php` files like the following and they will be compiled using **PeachPie**, so they shall not affect performance significantly:
 ```php
 <?php
