@@ -14,11 +14,21 @@ This webserver *should* be excellent for static files. If you only want to serve
 Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
 
 ## C# backend
-You can write C# files for backend, write files ending with `._cs`:
+You can write C# files for backend.
+For direct compilation write files ending with `._cs`:
 ```cs
 public static async Task Run(HttpContext context, string path) {
   context.Response.ContentType = "text/plain";
   await context.Response.WriteAsync($"Hello there! Path: {path}");
+}
+```
+You can also use pre-compiled .dll files, rename the extension to `._csdll` and export as C# library :
+```cs
+public class Is_CsScript {
+  public static async Task Run(HttpContext context, string path) {
+    context.Response.ContentType = "text/plain";
+    await context.Response.WriteAsync($"Hello there! Path: {path}");
+  }
 }
 ```
 
