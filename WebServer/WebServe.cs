@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
-using Microsoft.CodeAnalysis.CSharp.Scripting;
-using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -11,10 +9,10 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.WebSockets;
 using System.Reflection;
-using System.Text;
 using System.Net.Http.Headers;
 using System.Net;
 using Microsoft.AspNetCore.WebSockets;
+using CSScriptLib;
 
 namespace WebServer
 {
@@ -186,20 +184,9 @@ namespace WebServer
             if (context.WebSockets.IsWebSocketRequest)
             {
                 WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                var buffer = new byte[1024 * 4];
-                WebSocketReceiveResult result;
-                do
-                {
-                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                    if (result.MessageType == WebSocketMessageType.Text)
-                    {
-                        string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                        await webSocket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes($"Echo: {message}")), WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                }
-                while (!result.CloseStatus.HasValue);
-
-                await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
+                ClientWebSocket client = new ClientWebSocket();
+                await client.ConnectAsync(new Uri(targetUrl), CancellationToken.None);
+                await PipeSockets(webSocket, client);
                 return;
             }
             try
@@ -271,6 +258,47 @@ namespace WebServer
                 Console.WriteLine(e);
                 return;
             }
+        }
+        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
+        {
+            var buffer = new byte[8192]; // Adjust buffer size as needed.
+
+            // Server to Client
+            var serverToClient = Task.Run(async () =>
+            {
+                while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
+                {
+                    var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
+                        break;
+                    }
+
+                    await clientWebSocket.SendAsync(new ArraySegment<byte>(buffer, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
+                }
+            });
+
+            // Client to Server
+            var clientToServer = Task.Run(async () =>
+            {
+                while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
+                {
+                    var result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
+                        break;
+                    }
+
+                    await webSocket.SendAsync(new ArraySegment<byte>(buffer, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
+                }
+            });
+
+            // Wait for either direction to close.
+            await Task.WhenAny(serverToClient, clientToServer);
         }
 
         public static void IndexFiles(string rootDirectory)
@@ -382,28 +410,17 @@ namespace WebServer
             FileLead.TryRemove(filePath, out _);
         }
 
-        public static async void CompileAndAddFunction(string filePath)
+        public static void CompileAndAddFunction(string filePath)
         {
             // Read the code from the file
             string code = File.ReadAllText(filePath);
-            // Define assembly paths for HttpContext and Task
 
-            ScriptOptions options = ScriptOptions.Default.WithReferences(
-                MetadataReference.CreateFromFile(Program.config.HttpDll), MetadataReference.CreateFromFile(Program.config.ThreadingDll)
-        ).WithImports("System.Threading.Tasks", "Microsoft.AspNetCore.Http");
-            // Create a script and compile it
-            var script = CSharpScript.Create<Func<HttpContext, string, Task>>(code, options);
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            foreach (Diagnostic Dia in script.Compile())
-            {
-                Console.WriteLine(Dia.ToString());
-            }
-            Console.ResetColor();
-            var result = await script.RunAsync();
-            var func = result.ReturnValue;
-            if (func is Func<HttpContext, string, Task>)
-                // Add to the dictionary
-                FileLead[filePath] = func;
+            dynamic script = CSScript.Evaluator
+                         .LoadCode(code);
+            Console.WriteLine(script);
+            // Extract the function from the result
+            Func<HttpContext, string, Task>? func = script.Run;
+            if (func != null) FileLead[filePath] = func;
         }
 
         public static void LoadCompiledFunc(string file)
