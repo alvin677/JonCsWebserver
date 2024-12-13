@@ -145,7 +145,7 @@ namespace WebServer
             // Optionally, append the requested path if needed
             string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
             if (requestPath != null && requestPath.Contains("..")) requestPath = null;
-            List<string> fullPath = [Program.BackendDir, context.Request.Host.Value.Split(':')[0].Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo)];
+            List<string> fullPath = [Program.BackendDir, (Program.config.FilterFromDomain != "" ? context.Request.Host.Value.Split(':')[0].Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo) : context.Request.Host.Value.Split(':')[0])];
             if (requestPath != null) fullPath.AddRange(requestPath);
 
             return fullPath;
@@ -297,9 +297,9 @@ namespace WebServer
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
+                Console.WriteLine(e);
                 return;
             }
         }
