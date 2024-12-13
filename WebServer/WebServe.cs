@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.WebSockets;
 using CSScriptLib;
 using System.Buffers;
 using System.Security.Authentication;
+using CSScripting;
 
 namespace WebServer
 {
@@ -190,24 +191,50 @@ namespace WebServer
         private static HttpClientHandler handler = new HttpClientHandler();
         private static readonly HttpClient httpClient = new HttpClient(handler);
         private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
+        SocketsHttpHandler websockethandler = new SocketsHttpHandler
+        {
+            SslOptions = { EnabledSslProtocols = SslProtocols.Tls12 }
+        };
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
-            if (context.WebSockets.IsWebSocketRequest)
-            {
-                Console.WriteLine("Websocket request for redirection incoming..");
-                WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                Console.WriteLine("Accepted websocket from browser<->kestrel.");
-                ClientWebSocket client = new ClientWebSocket();
-                client.Options.HttpVersion = HttpVersion.Version30;
-                client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-                client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
-                await client.ConnectAsync(new Uri(targetUrl.Replace("https", "wss").Replace("http", "ws")), new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
-                Console.WriteLine("Connected kestrel<->endpoint.");
-                await PipeSockets(webSocket, client);
-                return;
-            }
             try
             {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    ClientWebSocket client = new ClientWebSocket();
+                    client.Options.CollectHttpResponseDetails = true;
+                    client.Options.HttpVersion = HttpVersion.Version20;
+                    client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
+                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
+                    websockethandler.CookieContainer = new CookieContainer();
+
+                    context.Request.Headers.ForEach((header) => {
+                        client.Options.SetRequestHeader(header.Key, header.Value);
+                    });
+                    //client.Options.Cookies = new CookieContainer();
+                    string Domain = context.Request.Host.Value.Split(":")[0];
+                    context.Request.Cookies.ForEach((cookie) => {
+                        Cookie cook = new Cookie(cookie.Key, cookie.Value);
+                        try
+                        {
+                            cook.Domain = Domain;
+                            websockethandler.CookieContainer.Add(cook);
+                            //client.Options.Cookies.Add(cook);
+                        }
+                        catch (Exception){}
+                    });
+                    // client.Options.Cookies = CopyCookies;
+                    try
+                    {
+                        HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
+                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
+                    }catch(Exception){}
+                    context.Response.StatusCode = (int)client.HttpStatusCode;
+                    await PipeSockets(webSocket, client);
+                    return;
+                }
                 HttpRequestMessage requestMessage = new HttpRequestMessage
                 {
                     Method = new HttpMethod(context.Request.Method),
