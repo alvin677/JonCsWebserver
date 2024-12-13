@@ -80,11 +80,11 @@ namespace WebServer
             {
                 endpoints.Map("/{**catchAll}", async context =>
                 {
-                    if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string OtherDomain))
+                    if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain))
                     {
                         context.Request.Host = new HostString(OtherDomain);
                     }
-                    if (Program.config.UrlAlias.TryGetValue(context.Request.Host.Value + context.Request.Path.Value, out string NewPath))
+                    if (Program.config.UrlAlias.TryGetValue(context.Request.Host.Value + context.Request.Path.Value, out string? NewPath))
                     {
                         context.Request.Path = new PathString(NewPath);
                     }
@@ -297,9 +297,9 @@ namespace WebServer
             }
             catch (Exception e)
             {
+                Console.WriteLine(e);
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                Console.WriteLine(e);
                 return;
             }
         }
