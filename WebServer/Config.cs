@@ -14,6 +14,7 @@ namespace WebServer
         public int gracePeriod { get; set; }
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
+        public uint WebSocketEndpointTimeout { get; set; }
         public ushort MaxDirDepth { get; set; }
         public string CertDir { get; set; } = "";
         public string WWWdir { get; set; } = "";
@@ -30,6 +31,8 @@ namespace WebServer
         public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>();
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
         public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
+        public Dictionary<string, string> DomainAlias { get; private set; } = new Dictionary<string, string>();
+        public Dictionary<string, string> UrlAlias { get; private set; } = new Dictionary<string, string>();
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
@@ -45,6 +48,7 @@ namespace WebServer
             gracePeriod = 5;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
+            WebSocketEndpointTimeout = 30;
             MaxDirDepth = 15;
             CertDir = "/etc/letsencrypt/live/";
             WWWdir = "";
@@ -99,6 +103,17 @@ namespace WebServer
             DefaultHeaders["Accept-Ranges"] = "bytes";
             DefaultHeaders["Access-Control-Allow-Origin"] = "*";
             DefaultHeaders["cache-control"] = "max-age=31536000";
+
+            DomainAlias = new Dictionary<string, string>()
+            {
+                ["www.jonhosting.com"] = "jonhosting.com",
+                ["www.jontv.me"] = "jontv.me"
+            };
+
+            UrlAlias = new Dictionary<string, string>()
+            {
+                ["jonhosting.com/testing1234"] = "/test2_maybe_use_symlink_instead/useDomainAlias_for_changing_domain_virtually"
+            };
 
             // MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
         }
