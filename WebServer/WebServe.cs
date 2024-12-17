@@ -135,6 +135,7 @@ namespace WebServer
             httpClient.Timeout = TimeSpan.FromSeconds(300);
             _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+            handler.AllowAutoRedirect = false;
 
 
             IndexFiles(Program.BackendDir);
@@ -407,7 +408,7 @@ namespace WebServer
                 string tmpfile = Path.Combine(Folder, File);
                 if (FileLead.TryGetValue(tmpfile, out var Handler))
                 {
-                    FileLead[Folder] = FileLead[tmpfile];
+                    FileLead[Folder] = (context, path) => { path = Path.Combine(path, tmpfile); return Handler(context, path); }; // Handler;
                     Any = true;
                     break;
                 }
