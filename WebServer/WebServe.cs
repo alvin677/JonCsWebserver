@@ -101,7 +101,7 @@ namespace WebServer
                     string FileToUse = string.Join("/", path);
                     if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1].Substring(path[path.Count - 1].Length - 1) != "/")) // linking directly to a file or a directory
                     {
-                        while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index._cs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.njs"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.bun"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.phpdll"))), out _Handler) && !FileLead.TryGetValue((FileToUse = string.Join("/", path.Append("index.html"))), out _Handler) && path.Count > 2) // file does not exist
+                        while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && path.Count > 2) // file does not exist
                         {
                             path.RemoveAt(path.Count - 1);
                         }
@@ -138,6 +138,7 @@ namespace WebServer
 
 
             IndexFiles(Program.BackendDir);
+            IndexDirectories(Program.BackendDir);
             SetupFileWatcher(Program.BackendDir);
         }
         public static List<string> GetDomainBasedPath(HttpContext context)
@@ -391,6 +392,28 @@ namespace WebServer
                 }
             }
         }
+        public static void IndexDirectories(string rootDirectory)
+        {
+            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories))
+            {
+                IndexDirectory(Folder);
+            }
+        }
+        public static void IndexDirectory(string Folder)
+        {
+            bool Any = false;
+            foreach (string File in Program.config.indexPriority)
+            {
+                string tmpfile = Path.Combine(Folder, File);
+                if (FileLead.TryGetValue(tmpfile, out var Handler))
+                {
+                    FileLead[Folder] = FileLead[tmpfile];
+                    Any = true;
+                    break;
+                }
+            }
+            if (!Any && FileLead.TryGetValue(Folder, out var Handle)) FileLead.Remove(Folder, out var Hand);
+        }
 
         static void SetupFileWatcher(string rootDirectory)
         {
@@ -448,6 +471,8 @@ namespace WebServer
                     FileIndex[filePath] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
                 }
             }
+            string? currFolder = Path.GetDirectoryName(filePath);
+            if(currFolder !=null) IndexDirectory(currFolder);
         }
 
         static void RemoveFromIndex(string filePath)

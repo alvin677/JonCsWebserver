@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
+using System.Net;
 
 namespace WebServer
 {
@@ -24,10 +25,12 @@ namespace WebServer
         public string Rand_Alphabet { get; set; } = "";
         public string FilterFromDomain { get; set; } = "";
         public string DomainFilterTo { get; set; } = "";
+        // public string PHP_FPM { get; set; } = "";
         public string ThreadingDll { get; set; } = "";
         public string HttpDll { get; set; } = "";
+        public string[] indexPriority { get; set; } = [];
+        public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
-        public List<string> DownloadIfExtension { get; set; } = new List<string>();
         public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>();
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
         public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
@@ -57,16 +60,18 @@ namespace WebServer
             SessionCookieName = "SSID";
             FilterFromDomain = ".";
             DomainFilterTo = "";
+            // PHP_FPM = IPAddress.Loopback.ToString() + ":9001";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             ThreadingDll = "./System.Threading.Tasks.dll";
             HttpDll = "./Microsoft.AspNetCore.Http.dll";
+            indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
-            DownloadIfExtension = new List<string>() {
+            DownloadIfExtension = [
             "zip",
             "jar",
             "dll",
             "exe"
-            };
+            ];
             ExtTypes = new Dictionary<string, string>()
             {
                 ["html"] = "text/html",
