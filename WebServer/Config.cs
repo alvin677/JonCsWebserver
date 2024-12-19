@@ -31,11 +31,11 @@ namespace WebServer
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
-        public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>();
-        public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>();
-        public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>();
-        public Dictionary<string, string> DomainAlias { get; private set; } = new Dictionary<string, string>();
-        public Dictionary<string, string> UrlAlias { get; private set; } = new Dictionary<string, string>();
+        public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> DomainAlias { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> UrlAlias { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
