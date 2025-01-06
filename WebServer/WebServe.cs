@@ -383,13 +383,14 @@ namespace WebServer
                 }
                 if (Extensions.TryGetValue(Ext, out var Handler))
                 {
-                    FileLead[file] = Handler;
+                    FileLead[file.Replace(Path.DirectorySeparatorChar,'/')] = Handler;
                 }
                 else
                 {
-                    FileLead[file] = DefHandle;
+                    string file2 = file.Replace(Path.DirectorySeparatorChar, '/');
+                    FileLead[file2] = DefHandle;
                     FileInfo fileInfo = new FileInfo(file);
-                    FileIndex[file] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
+                    FileIndex[file2] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
                 }
             }
         }
@@ -397,7 +398,7 @@ namespace WebServer
         {
             foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories))
             {
-                IndexDirectory(Folder);
+                IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
             }
         }
         public static void IndexDirectory(string Folder)
@@ -405,10 +406,10 @@ namespace WebServer
             bool Any = false;
             foreach (string File in Program.config.indexPriority)
             {
-                string tmpfile = Path.Combine(Folder, File);
+                string tmpfile = Path.Combine(Folder, File).Replace(Path.DirectorySeparatorChar, '/');
                 if (FileLead.TryGetValue(tmpfile, out var Handler))
                 {
-                    FileLead[Folder] = (context, path) => { path = Path.Combine(path, tmpfile); return Handler(context, path); }; // Handler;
+                    FileLead[Folder] = (context, path) => { path = Path.Combine(path, tmpfile).Replace(Path.DirectorySeparatorChar, '/'); return Handler(context, path); }; // Handler;
                     Any = true;
                     break;
                 }
@@ -430,8 +431,8 @@ namespace WebServer
             watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath);
             watcher.Renamed += (sender, e) =>
             {
-                RemoveFromIndex(e.OldFullPath);
-                UpdateIndex(e.FullPath);
+                RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
+                UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             };
 
             watcher.EnableRaisingEvents = true;
@@ -473,7 +474,7 @@ namespace WebServer
                 }
             }
             string? currFolder = Path.GetDirectoryName(filePath);
-            if(currFolder !=null) IndexDirectory(currFolder);
+            if(currFolder !=null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
         }
 
         static void RemoveFromIndex(string filePath)
@@ -492,7 +493,7 @@ namespace WebServer
             Console.WriteLine(script);
             // Extract the function from the result
             Func<HttpContext, string, Task>? func = script.Run;
-            if (func != null) FileLead[filePath] = func;
+            if (func != null) FileLead[filePath.Replace(Path.DirectorySeparatorChar, '/')] = func;
         }
 
         public static void LoadCompiledFunc(string file)
@@ -514,7 +515,7 @@ namespace WebServer
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[file[..^3]] = func;
+            FileLead[file[..^3].Replace(Path.DirectorySeparatorChar, '/')] = func;
         }
 
         public static void LoadPhpAssembly(string filePath)
@@ -535,7 +536,7 @@ namespace WebServer
                 typeof(Func<HttpContext, string, Task>), method
             );
 
-            FileLead[filePath] = phpFunction;
+            FileLead[filePath.Replace(Path.DirectorySeparatorChar, '/')] = phpFunction;
         }
         public static bool GenPhpAssembly(string filePath)
         {
