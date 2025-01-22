@@ -23,12 +23,27 @@ public static async Task Run(HttpContext context, string path) {
 }
 ```
 (**works since version 0.76**) You can also use pre-compiled .dll C# library files, rename the extension from `.dll` to `._csdll`:
+<br>Example 1:
 ```cs
 public class Is_CsScript {
   public static async Task Run(Microsoft.AspNetCore.Http.HttpContext context, string path) {
     context.Response.ContentType = "text/plain";
     await context.Response.WriteAsync($"Hello there! Path: {path}");
   }
+}
+```
+Example 2:
+```cs
+using Microsoft.AspNetCore.Http;
+public class Is_CsScript
+{
+    static int count = 0;
+    public static async Task Run(HttpContext context, string path)
+    {
+        count++;
+        context.Response.ContentType = "text/plain";
+        await context.Response.WriteAsync(count.ToString());
+    }
 }
 ```
 
