@@ -492,7 +492,6 @@ namespace WebServer
         {
 
             if ((Program.config.Enable_CS && filePath.EndsWith("._csdll")) || (Program.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
-            Console.WriteLine("Removing: " + filePath);
             FileIndex.TryRemove(filePath, out _);
             FileLead.TryRemove(filePath, out _);
         }
