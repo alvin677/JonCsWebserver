@@ -76,71 +76,75 @@ namespace WebServer
             app.UseResponseCompression();
             app.UseWebSockets();
             app.UseRouting();
-            if (Program.BackendDir != "") app.UseEndpoints(endpoints =>
+            if (Program.BackendDir != "")
             {
-                endpoints.Map("/{**catchAll}", async context =>
+                app.UseEndpoints(endpoints =>
+             {
+                 endpoints.Map("/{**catchAll}", async context =>
+                 {
+                     if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain))
+                     {
+                         context.Request.Host = new HostString(OtherDomain);
+                     }
+                     if (Program.config.UrlAlias.TryGetValue(context.Request.Host.Value + context.Request.Path.Value, out string? NewPath))
+                     {
+                         context.Request.Path = new PathString(NewPath);
+                     }
+                     List<string> path = GetDomainBasedPath(context); // Extract the request path
+                     if (path.Count > Program.config.MaxDirDepth)
+                     {
+                         context.Response.StatusCode = 414;
+                         return;
+                     }
+                     foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
+                     {
+                         context.Response.Headers[header.Key] = header.Value;
+                     }
+                     string FileToUse = string.Join("/", path);
+                     if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1].Substring(path[path.Count - 1].Length - 1) != "/")) // linking directly to a file or a directory
+                     {
+                         while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && path.Count > 2) // file does not exist
+                         {
+                             path.RemoveAt(path.Count - 1);
+                         }
+                     }
+                     if (_Handler != null)
+                     {
+                         string[] getExt = FileToUse.Split('.');
+                         string Ext = getExt[getExt.Length - 1];
+                         if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
+                         {
+                             context.Response.Headers["content-type"] = ctype;
+                         }
+                         await _Handler(context, FileToUse);
+                         return;
+                     }
+
+                     context.Response.StatusCode = 404;
+                     await context.Response.WriteAsync(error404.Replace("${0}", path[1] == "jontvme" ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                 });
+             });
+
+                foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
+                foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
                 {
-                    if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain))
+                    Extensions[ext.Key] = (context, path) =>
                     {
-                        context.Request.Host = new HostString(OtherDomain);
-                    }
-                    if (Program.config.UrlAlias.TryGetValue(context.Request.Host.Value + context.Request.Path.Value, out string? NewPath))
-                    {
-                        context.Request.Path = new PathString(NewPath);
-                    }
-                    List<string> path = GetDomainBasedPath(context); // Extract the request path
-                    if (path.Count > Program.config.MaxDirDepth)
-                    {
-                        context.Response.StatusCode = 414;
-                        return;
-                    }
-                    foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
-                    {
-                        context.Response.Headers[header.Key] = header.Value;
-                    }
-                    string FileToUse = string.Join("/", path);
-                    if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1].Substring(path[path.Count - 1].Length - 1) != "/")) // linking directly to a file or a directory
-                    {
-                        while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && path.Count > 2) // file does not exist
-                        {
-                            path.RemoveAt(path.Count - 1);
-                        }
-                    }
-                    if (_Handler != null)
-                    {
-                        string[] getExt = FileToUse.Split('.');
-                        string Ext = getExt[getExt.Length - 1];
-                        if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
-                        {
-                            context.Response.Headers["content-type"] = ctype;
-                        }
-                        await _Handler(context, FileToUse);
-                        return;
-                    }
+                        string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
+                        return ForwardRequestTo(context, targetUrl);
+                    };
+                }
 
-                    context.Response.StatusCode = 404;
-                    await context.Response.WriteAsync(error404.Replace("${0}", path[1] == "jontvme" ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
-                });
-            });
+                httpClient.Timeout = TimeSpan.FromSeconds(300);
+                _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+                handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+                handler.AllowAutoRedirect = false;
 
-            foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
-            {
-                Extensions[ext.Key] = (context, path) => {
-                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
-                    return ForwardRequestTo(context, targetUrl);
-                };
+
+                IndexFiles(Program.BackendDir);
+                IndexDirectories(Program.BackendDir);
+                SetupFileWatcher(Program.BackendDir);
             }
-
-            httpClient.Timeout = TimeSpan.FromSeconds(300);
-            _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
-            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
-            handler.AllowAutoRedirect = false;
-
-
-            IndexFiles(Program.BackendDir);
-            IndexDirectories(Program.BackendDir);
-            SetupFileWatcher(Program.BackendDir);
         }
         public static List<string> GetDomainBasedPath(HttpContext context)
         {
@@ -353,45 +357,49 @@ namespace WebServer
         {
             foreach (string file in Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories))
             {
-                string[] getExt = file.Split('.');
-                string Ext = getExt[getExt.Length - 1];
-                if (Program.config.Enable_CS)
+                IndexFile(file);
+            }
+        }
+        public static void IndexFile(string file)
+        {
+            string[] getExt = file.Split('.');
+            string Ext = getExt[getExt.Length - 1];
+            if (Program.config.Enable_CS)
+            {
+                if (Ext == "_cs")
                 {
-                    if (Ext == "_cs")
-                    {
-                        try { CompileAndAddFunction(file); } catch (Exception) { }
-                        continue;
-                    }
-                    else if (Ext == "_csdll")
-                    {
-                        try { LoadCompiledFunc(file); } catch (Exception) { }
-                        continue;
-                    }
+                    try { CompileAndAddFunction(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    return;
                 }
-                if (Program.config.Enable_PHP)
+                else if (Ext == "_csdll")
                 {
-                    if (Ext == "php")
-                    {
-                        try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception) { }
-                        continue;
-                    }
-                    else if (Ext == "phpdll")
-                    {
-                        try { LoadPhpAssembly(file); } catch (Exception) { }
-                        continue;
-                    }
+                    try { LoadCompiledFunc(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    return;
                 }
-                if (Extensions.TryGetValue(Ext, out var Handler))
+            }
+            if (Program.config.Enable_PHP)
+            {
+                if (Ext == "php")
                 {
-                    FileLead[file.Replace(Path.DirectorySeparatorChar,'/')] = Handler;
+                    try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    return;
                 }
-                else
+                else if (Ext == "phpdll")
                 {
-                    string file2 = file.Replace(Path.DirectorySeparatorChar, '/');
-                    FileLead[file2] = DefHandle;
-                    FileInfo fileInfo = new FileInfo(file);
-                    FileIndex[file2] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
+                    try { LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    return;
                 }
+            }
+            if (Extensions.TryGetValue(Ext, out var Handler))
+            {
+                FileLead[file.Replace(Path.DirectorySeparatorChar, '/')] = Handler;
+            }
+            else
+            {
+                string file2 = file.Replace(Path.DirectorySeparatorChar, '/');
+                FileLead[file2] = DefHandle;
+                FileInfo fileInfo = new FileInfo(file);
+                FileIndex[file2] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
             }
         }
         public static void IndexDirectories(string rootDirectory)
@@ -442,6 +450,8 @@ namespace WebServer
         {
             if (File.Exists(filePath))
             {
+                IndexFile(filePath);
+                /*
                 string[] getExt = filePath.Split('.');
                 string Ext = getExt[getExt.Length - 1];
                 if (Program.config.Enable_CS)
@@ -471,10 +481,10 @@ namespace WebServer
                     FileLead[filePath] = DefHandle;
                     FileInfo fileInfo = new FileInfo(filePath);
                     FileIndex[filePath] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
-                }
+                }*/
             }
             string? currFolder = Path.GetDirectoryName(filePath);
-            if(currFolder !=null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
+            if(currFolder != null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
         }
 
         static void RemoveFromIndex(string filePath)
