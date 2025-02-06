@@ -23,11 +23,11 @@ namespace WebServer
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br />${0}<br /><p>Maybe we're working on adding this page.</p>${1}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
-        public static readonly ConcurrentDictionary<string, long> FileIndex = new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
-        private static Timer _cleanupTimer;
+        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -136,10 +136,8 @@ namespace WebServer
                 }
 
                 httpClient.Timeout = TimeSpan.FromSeconds(300);
-                _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
                 handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
                 handler.AllowAutoRedirect = false;
-
 
                 IndexFiles(Program.BackendDir);
                 IndexDirectories(Program.BackendDir);
@@ -158,29 +156,64 @@ namespace WebServer
         }
         private static async Task DefHandle(HttpContext context, string file)
         {
-            if (FileIndex.TryGetValue(file, out long LastMod))
+            if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
-                context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod).ToString("R");
+                context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
+                context.Response.ContentLength = LastMod[1];
                 if (long.TryParse(context.Request.Headers.IfModifiedSince, out long LM))
                 {
-                    if (LastMod <= LM)
+                    if (LastMod[0] <= LM)
                     {
                         context.Response.StatusCode = 304;
                         return;
                     }
                 }
+                if (context.Request.Method == HttpMethods.Options) return;
+
+                if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
+                {
+                    string range = rangeHeader.ToString();
+                    if (range.StartsWith("bytes=") && RangeHeaderValue.TryParse(range, out var parsedRange))
+                    {
+                        var firstRange = parsedRange.Ranges.First();
+                        long start = firstRange.From ?? 0;
+                        long end = firstRange.To ?? (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
+                        if (start >= LastMod[1] || end >= LastMod[1] || start > end)
+                        {
+                            context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
+                            context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
+                            return;
+                        }
+                        long contentLength = end - start + 1;
+                        if (contentLength != LastMod[1])
+                        {
+                            context.Response.StatusCode = StatusCodes.Status206PartialContent;
+                            context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
+                            context.Response.ContentLength = contentLength;
+
+                            using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
+                            {
+                                stream.Seek(start, SeekOrigin.Begin);
+                                await stream.CopyToAsync(context.Response.Body, (int)contentLength);
+                            }
+                            return;
+                        }
+                    }
+                }
             }
             if (context.Request.Method == HttpMethods.Options) return;
+
             await context.Response.SendFileAsync(file);
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
-            if (FileIndex.TryGetValue(file, out long LastMod))
+            if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
-                context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod).ToString("R");
+                context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
+                context.Response.ContentLength = LastMod[1];
                 if (long.TryParse(context.Request.Headers.IfModifiedSince, out long LM))
                 {
-                    if (LastMod <= LM)
+                    if (LastMod[0] <= LM)
                     {
                         context.Response.StatusCode = 304;
                         return;
@@ -399,7 +432,7 @@ namespace WebServer
                 string file2 = file.Replace(Path.DirectorySeparatorChar, '/');
                 FileLead[file2] = DefHandle;
                 FileInfo fileInfo = new FileInfo(file);
-                FileIndex[file2] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
+                FileIndex[file2] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
             }
         }
         public static void IndexDirectories(string rootDirectory)

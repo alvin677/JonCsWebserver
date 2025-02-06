@@ -47,7 +47,7 @@ public class Program
         Task.Run(() =>
         {
             string? cmd;
-            while ((cmd = Console.ReadLine()) != "" && act)
+            while ((cmd = Console.ReadLine()) != null && cmd != "" && act)
             {
                 string[] Args = cmd.Split(" ");
                 switch (Args[0])
