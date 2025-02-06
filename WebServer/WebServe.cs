@@ -16,6 +16,7 @@ using CSScriptLib;
 using System.Buffers;
 using System.Security.Authentication;
 using CSScripting;
+using System.Text;
 
 namespace WebServer
 {
@@ -154,6 +155,46 @@ namespace WebServer
 
             return fullPath;
         }
+        private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
+        {
+            const int bufferSize = 8192; // 8KB chunks
+            System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
+
+            await using FileStream fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            fileStream.Seek(start, SeekOrigin.Begin);
+
+            long remaining = length;
+            while (remaining > 0)
+            {
+                var memory = bodyWriter.GetMemory((int)Math.Min(bufferSize, remaining));
+                int bytesRead = await fileStream.ReadAsync(memory);
+                if (bytesRead == 0) break; // End of file
+
+                bodyWriter.Advance(bytesRead);
+                remaining -= bytesRead;
+
+                var flushResult = await bodyWriter.FlushAsync();
+                if (flushResult.IsCanceled || flushResult.IsCompleted) break;
+            }
+
+            await bodyWriter.CompleteAsync();
+        }
+        private static async Task StreamFileChunked(HttpContext context, string file, long start, long length)
+        {
+            await using FileStream fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            fileStream.Seek(start, SeekOrigin.Begin);
+
+            var buffer = new byte[8192];  // Chunk size
+            int bytesRead;
+            while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
+            {
+                await context.Response.Body.WriteAsync(buffer, 0, bytesRead);
+
+                // Ensure data is actually written to the client
+                await context.Response.Body.FlushAsync();
+            }
+        }
+
         private static async Task DefHandle(HttpContext context, string file)
         {
             if (FileIndex.TryGetValue(file, out long[]? LastMod))
@@ -170,35 +211,45 @@ namespace WebServer
                 }
                 if (context.Request.Method == HttpMethods.Options) return;
 
+                long start = 0;
+                long end = (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
                 if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
                 {
                     string range = rangeHeader.ToString();
                     if (range.StartsWith("bytes=") && RangeHeaderValue.TryParse(range, out var parsedRange))
                     {
                         var firstRange = parsedRange.Ranges.First();
-                        long start = firstRange.From ?? 0;
-                        long end = firstRange.To ?? (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
-                        if (start >= LastMod[1] || end >= LastMod[1] || start > end)
-                        {
-                            context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
-                            context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
-                            return;
-                        }
-                        long contentLength = end - start + 1;
-                        if (contentLength != LastMod[1])
-                        {
-                            context.Response.StatusCode = StatusCodes.Status206PartialContent;
-                            context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
-                            context.Response.ContentLength = contentLength;
-
-                            using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
-                            {
-                                stream.Seek(start, SeekOrigin.Begin);
-                                await stream.CopyToAsync(context.Response.Body, (int)contentLength);
-                            }
-                            return;
-                        }
+                        start = firstRange.From ?? start;
+                        end = firstRange.To ?? end;
                     }
+                }
+                if (start >= LastMod[1] || end >= LastMod[1] || start > end)
+                {
+                    context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
+                    context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
+                    return;
+                }
+                long contentLength = end - start + 1;
+                if (contentLength != LastMod[1])
+                {
+                    context.Response.StatusCode = StatusCodes.Status206PartialContent;
+                    string protocol = context.Request.Protocol;
+
+                    if (protocol == "HTTP/1.1")
+                    {
+                        context.Response.Headers.Remove("Content-Length");
+                        context.Response.Headers["Transfer-Encoding"] = "chunked";
+                        // Use Chunked Transfer Encoding
+                        await StreamFileChunked(context, file, start, contentLength);
+                    }
+                    else
+                    {
+                        context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
+                        context.Response.ContentLength = contentLength;
+
+                        await StreamFileUsingBodyWriter(context, file, start, contentLength);
+                    }
+                    return;
                 }
             }
             if (context.Request.Method == HttpMethods.Options) return;
