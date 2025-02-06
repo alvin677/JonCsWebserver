@@ -40,7 +40,9 @@ public class Is_CsScript
     static int count = 0;
     public static async Task Run(HttpContext context, string path)
     {
+// lock(count) {
         count++;
+// }
         context.Response.ContentType = "text/plain";
         await context.Response.WriteAsync(count.ToString());
     }
