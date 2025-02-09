@@ -257,7 +257,7 @@ namespace WebServer
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
-            if (FileIndex.TryGetValue(file, out long[]? LastMod))
+            /*if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
                 context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
                 context.Response.ContentLength = LastMod[1];
@@ -269,13 +269,14 @@ namespace WebServer
                         return;
                     }
                 }
-            }
+            }*/
             string fn = "undefined";
             string[] pa = file.Split("/");
             if (pa.Length > 0) fn = pa[pa.Length - 1];
             context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
-            if (context.Request.Method == HttpMethods.Options) return;
-            await context.Response.SendFileAsync(file);
+            await DefHandle(context, file);
+            /*if (context.Request.Method == HttpMethods.Options) return;
+            await context.Response.SendFileAsync(file);*/
         }
         private static HttpClientHandler handler = new HttpClientHandler();
         private static readonly HttpClient httpClient = new HttpClient(handler);
