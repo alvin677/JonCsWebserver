@@ -211,45 +211,44 @@ namespace WebServer
                 }
                 if (context.Request.Method == HttpMethods.Options) return;
 
-                long start = 0;
-                long end = (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
+                //long end = (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
                 if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
                 {
                     string range = rangeHeader.ToString();
                     if (range.StartsWith("bytes=") && RangeHeaderValue.TryParse(range, out var parsedRange))
                     {
                         var firstRange = parsedRange.Ranges.First();
-                        start = firstRange.From ?? start;
-                        end = firstRange.To ?? end;
-                    }
-                }
-                if (start >= LastMod[1] || end >= LastMod[1] || start > end)
-                {
-                    context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
-                    context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
-                    return;
-                }
-                long contentLength = end - start + 1;
-                if (contentLength != LastMod[1])
-                {
-                    context.Response.StatusCode = StatusCodes.Status206PartialContent;
-                    string protocol = context.Request.Protocol;
+                        long start = firstRange.From ?? 0;
+                        long end = firstRange.To ?? LastMod[1] - 1;
+                        if (start >= LastMod[1] || end >= LastMod[1] || start > end)
+                        {
+                            context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
+                            context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
+                            return;
+                        }
+                        long contentLength = end - start + 1;
+                        if (contentLength != LastMod[1])
+                        {
+                            context.Response.StatusCode = StatusCodes.Status206PartialContent;
+                            string protocol = context.Request.Protocol;
 
-                    if (protocol == "HTTP/1.1")
-                    {
-                        context.Response.Headers.Remove("Content-Length");
-                        context.Response.Headers["Transfer-Encoding"] = "chunked";
-                        // Use Chunked Transfer Encoding
-                        await StreamFileChunked(context, file, start, contentLength);
-                    }
-                    else
-                    {
-                        context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
-                        context.Response.ContentLength = contentLength;
+                            if (protocol == "HTTP/1.1")
+                            {
+                                context.Response.Headers.Remove("Content-Length");
+                                context.Response.Headers["Transfer-Encoding"] = "chunked";
+                                // Use Chunked Transfer Encoding
+                                await StreamFileChunked(context, file, start, contentLength);
+                            }
+                            else
+                            {
+                                context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
+                                context.Response.ContentLength = contentLength;
 
-                        await StreamFileUsingBodyWriter(context, file, start, contentLength);
+                                await StreamFileUsingBodyWriter(context, file, start, contentLength);
+                            }
+                            return;
+                        }
                     }
-                    return;
                 }
             }
             if (context.Request.Method == HttpMethods.Options) return;
