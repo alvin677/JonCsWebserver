@@ -506,7 +506,7 @@ namespace WebServer
                     break;
                 }
             }
-            if (!Any && FileLead.TryGetValue(Folder, out _)) FileLead.Remove(Folder, out _);
+            if (!Any && FileLead.ContainsKey(Folder)) FileLead.Remove(Folder, out _);
         }
 
         static void SetupFileWatcher(string rootDirectory)
