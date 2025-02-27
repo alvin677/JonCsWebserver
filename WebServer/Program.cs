@@ -174,7 +174,7 @@ public class Program
 
                     services.Configure<GzipCompressionProviderOptions>(options =>
                     {
-                        options.Level = System.IO.Compression.CompressionLevel.Fastest;
+                        options.Level = Program.config.CompressionLevel;
                     });
                 });
                 webBuilder.ConfigureLogging(logging => {

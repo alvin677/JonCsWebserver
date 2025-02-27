@@ -75,10 +75,10 @@ namespace WebServer
                 });
             }
             app.UseResponseCompression();
-            app.UseWebSockets();
-            app.UseRouting();
             if (Program.BackendDir != "")
             {
+                app.UseWebSockets();
+                app.UseRouting();
                 app.UseEndpoints(endpoints =>
              {
                  endpoints.Map("/{**catchAll}", async context =>
@@ -506,7 +506,7 @@ namespace WebServer
                     break;
                 }
             }
-            if (!Any && FileLead.TryGetValue(Folder, out var Handle)) FileLead.Remove(Folder, out var Hand);
+            if (!Any && FileLead.TryGetValue(Folder, out _)) FileLead.Remove(Folder, out _);
         }
 
         static void SetupFileWatcher(string rootDirectory)
@@ -536,37 +536,6 @@ namespace WebServer
             if (File.Exists(filePath))
             {
                 IndexFile(filePath);
-                /*
-                string[] getExt = filePath.Split('.');
-                string Ext = getExt[getExt.Length - 1];
-                if (Program.config.Enable_CS)
-                {
-                    if (Ext == "_cs")
-                    {
-                        try { CompileAndAddFunction(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
-                        return;
-                    }
-                    else if (Ext == "_csdll")
-                    {
-                        try { LoadCompiledFunc(filePath); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
-                        return;
-                    }
-                }
-                if (Program.config.Enable_PHP && Ext == "php")
-                {
-                    try { if (GenPhpAssembly(filePath)) LoadPhpAssembly(filePath); } catch (Exception) { }
-                    return;
-                }
-                if (Extensions.TryGetValue(Ext, out var Handler))
-                {
-                    FileLead[filePath] = Handler;
-                }
-                else
-                {
-                    FileLead[filePath] = DefHandle;
-                    FileInfo fileInfo = new FileInfo(filePath);
-                    FileIndex[filePath] = ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
-                }*/
             }
             string? currFolder = Path.GetDirectoryName(filePath);
             if(currFolder != null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
