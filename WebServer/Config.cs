@@ -87,7 +87,8 @@ namespace WebServer
                 ["njs"] = "http://{domain}:3000",
                 ["bun"] = "http://{domain}:3000"
             };
-            foreach (string g in new string[] { "js", "json", "pdf", "zip", "jar", "dll", "exe" })
+            ExtTypes["js"] = "application/javascript";
+            foreach (string g in new string[] { "json", "pdf", "zip", "jar", "dll", "exe" })
             {
                 ExtTypes[g] = "application/" + g;
             }
