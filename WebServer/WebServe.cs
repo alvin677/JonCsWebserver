@@ -517,7 +517,7 @@ namespace WebServer
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
             };
-            watcher.Filter = "*.*";
+            watcher.Filter = "*";
 
             watcher.Created += (sender, e) => UpdateIndex(e.FullPath);
             watcher.Changed += (sender, e) => UpdateIndex(e.FullPath);
