@@ -29,6 +29,7 @@ namespace WebServer
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+        private FileSystemWatcher watcher = new FileSystemWatcher { };
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -139,9 +140,11 @@ namespace WebServer
                 httpClient.Timeout = TimeSpan.FromSeconds(300);
                 handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
                 handler.AllowAutoRedirect = false;
-
-                IndexFiles(Program.BackendDir);
-                IndexDirectories(Program.BackendDir);
+                Task.Run(() =>
+                {
+                    IndexFiles(Program.BackendDir);
+                    IndexDirectories(Program.BackendDir);
+                });
                 SetupFileWatcher(Program.BackendDir);
             }
         }
@@ -508,10 +511,9 @@ namespace WebServer
             }
             if (!Any && FileLead.ContainsKey(Folder)) FileLead.Remove(Folder, out _);
         }
-
-        static void SetupFileWatcher(string rootDirectory)
+        void SetupFileWatcher(string rootDirectory)
         {
-            FileSystemWatcher watcher = new FileSystemWatcher
+            watcher = new FileSystemWatcher
             {
                 Path = rootDirectory,
                 IncludeSubdirectories = true,
