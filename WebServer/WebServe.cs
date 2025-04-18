@@ -519,9 +519,9 @@ namespace WebServer
             };
             watcher.Filter = "*";
 
-            watcher.Created += (sender, e) => UpdateIndex(e.FullPath);
-            watcher.Changed += (sender, e) => UpdateIndex(e.FullPath);
-            watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath);
+            watcher.Created += (sender, e) => UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Changed += (sender, e) => UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             watcher.Renamed += (sender, e) =>
             {
                 RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
