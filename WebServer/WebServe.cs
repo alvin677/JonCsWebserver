@@ -61,7 +61,7 @@ namespace WebServer
 
             public Stream CreateStream(Stream outputStream)
             {
-                return new DeflateStream(outputStream, CompressionLevel.Optimal, leaveOpen: true);
+                return new DeflateStream(outputStream, Program.config.CompressionLevel, leaveOpen: true);
             }
         }
 
