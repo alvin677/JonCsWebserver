@@ -126,7 +126,16 @@ namespace WebServer
                      await context.Response.WriteAsync(error404.Replace("${0}", path[1] == "jontvme" ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
                  });
              });
-
+                Reload();
+                Task.Run(() =>
+                {
+                    IndexFiles(Program.BackendDir);
+                    IndexDirectories(Program.BackendDir);
+                });
+                SetupFileWatcher(Program.BackendDir);
+            }
+        }
+        public static void Reload() {
                 foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
                 foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
                 {
@@ -140,13 +149,6 @@ namespace WebServer
                 httpClient.Timeout = TimeSpan.FromSeconds(300);
                 handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
                 handler.AllowAutoRedirect = false;
-                Task.Run(() =>
-                {
-                    IndexFiles(Program.BackendDir);
-                    IndexDirectories(Program.BackendDir);
-                });
-                SetupFileWatcher(Program.BackendDir);
-            }
         }
         public static List<string> GetDomainBasedPath(HttpContext context)
         {
