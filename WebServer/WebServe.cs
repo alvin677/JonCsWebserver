@@ -299,10 +299,7 @@ namespace WebServer
         private static HttpClientHandler handler = new HttpClientHandler();
         private static readonly HttpClient httpClient = new HttpClient(handler);
         private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
-        SocketsHttpHandler websockethandler = new SocketsHttpHandler
-        {
-            SslOptions = { EnabledSslProtocols = SslProtocols.Tls12 }
-        };
+        
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             try
@@ -312,16 +309,25 @@ namespace WebServer
                     WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     ClientWebSocket client = new ClientWebSocket();
                     client.Options.CollectHttpResponseDetails = true;
-                    client.Options.HttpVersion = HttpVersion.Version20;
-                    client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+                    //client.Options.HttpVersion = HttpVersion.Version11;
+                    //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
+                    SocketsHttpHandler websockethandler = new SocketsHttpHandler
+                    {
+                        SslOptions = { EnabledSslProtocols = SslProtocols.Tls12 },
+                        EnableMultipleHttp2Connections = true
+                    };
                     client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
                     websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
                     websockethandler.CookieContainer = new CookieContainer();
-
+                    websockethandler.Credentials = client.Options.Credentials;
+                    /*
                     context.Request.Headers.ForEach((header) => {
                         client.Options.SetRequestHeader(header.Key, header.Value);
+                        Console.WriteLine(header.Key +  ": " + header.Value);
                     });
+                    */
                     client.Options.SetRequestHeader("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
+                    
                     //client.Options.Cookies = new CookieContainer();
                     string Domain = context.Request.Host.Value.Split(":")[0];
                     context.Request.Cookies.ForEach((cookie) => {
@@ -338,9 +344,17 @@ namespace WebServer
                     try
                     {
                         HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
+                        
                         await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
-                    }catch(Exception){}
-                    context.Response.StatusCode = (int)client.HttpStatusCode;
+                    }
+                    catch(Exception e){
+                        // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
+                        client.Dispose();
+                        webSocket.Abort();
+                        context.Response.StatusCode = 503;
+                        return;
+                    }
+                    // context.Response.StatusCode = (int)client.HttpStatusCode;
                     await PipeSockets(webSocket, client);
                     return;
                 }
@@ -413,12 +427,13 @@ namespace WebServer
                 return;
             }
         }
-        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
+        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket) // user, proxyClient
         {
-            // Server to Client
+            // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>
             {
-                ArraySegment<byte> buffer = new ArraySegment<byte>(new byte[8192]);
+                byte[] buff = new byte[1024];
+                ArraySegment<byte> buffer = new ArraySegment<byte>(buff);
                 while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
                 {
                     WebSocketReceiveResult result = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
@@ -429,15 +444,16 @@ namespace WebServer
                         break;
                     }
 
-                    await clientWebSocket.SendAsync(buffer, result.MessageType, result.EndOfMessage, CancellationToken.None);
+                    await clientWebSocket.SendAsync(new ArraySegment<byte>(buff, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
                 }
-                Console.WriteLine("Proxy webhook kestrel->endpoint closed.");
+                Console.WriteLine("Proxy websock kestrel->endpoint closed.");
             });
 
-            // Client to Server
+            // Endpoint -> C# -> Client
             Task clientToServer = Task.Run(async () =>
             {
-                ArraySegment<byte> buffer = new ArraySegment<byte>(new byte[8192]);
+                byte[] buff = new byte[8192];
+                ArraySegment<byte> buffer = new ArraySegment<byte>(buff);
                 while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
                 {
                     WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(buffer, CancellationToken.None);
@@ -448,9 +464,9 @@ namespace WebServer
                         break;
                     }
 
-                    await webSocket.SendAsync(buffer, result.MessageType, result.EndOfMessage, CancellationToken.None);
+                    await webSocket.SendAsync(new ArraySegment<byte>(buff, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
                 }
-                Console.WriteLine("Proxy webhook endpoint->kestrel closed.");
+                Console.WriteLine("Proxy websock endpoint->kestrel closed.");
             });
 
             // Wait for either direction to close.
