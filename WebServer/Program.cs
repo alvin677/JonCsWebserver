@@ -44,7 +44,7 @@ public class Program
         }
         LoadCerts(certPath);
         IHost web = CreateHostBuilder(args).Build();
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             string? cmd;
             while (act && (cmd = Console.ReadLine()) != null && cmd != "")
@@ -127,13 +127,16 @@ public class Program
                     case "shutdown":
                         {
                             Console.WriteLine("Shutting down..");
-                            web.StopAsync();
+                            _ = web.StopAsync();
                             act = false;
                             break;
                         }
                     case "restart":
                         {
-                            web.WaitForShutdown();
+                            await web.StopAsync();
+                            Console.WriteLine("Successfully shutdown. Starting now..");
+                            _ = web.StartAsync();
+                            web.Run();
                             break;
                         }
                 }

@@ -137,6 +137,13 @@ namespace WebServer
                 SetupFileWatcher(Program.BackendDir);
             }
         }
+        private void OnStarted()
+        {
+            Console.WriteLine("WebServer started!");
+            Reload();
+            // Perform actions here, e.g., reload config or other startup tasks
+        }
+
         public void Reload()
         {
             foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
