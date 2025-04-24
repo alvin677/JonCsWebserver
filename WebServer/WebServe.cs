@@ -459,7 +459,7 @@ namespace WebServer
         {
             foreach (string file in Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories))
             {
-                IndexFile(file);
+                IndexFile(file.Replace(Path.DirectorySeparatorChar, '/'));
             }
         }
         public static void IndexFile(string file)
@@ -494,11 +494,11 @@ namespace WebServer
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
             {
-                FileLead[file.Replace(Path.DirectorySeparatorChar, '/')] = Handler;
+                FileLead[file] = Handler;
             }
             else
             {
-                string file2 = file.Replace(Path.DirectorySeparatorChar, '/');
+                string file2 = file;
                 FileLead[file2] = DefHandle;
                 FileInfo fileInfo = new FileInfo(file);
                 FileIndex[file2] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
@@ -576,7 +576,7 @@ namespace WebServer
             Console.WriteLine(script);
             // Extract the function from the result
             Func<HttpContext, string, Task>? func = script.Run;
-            if (func != null) FileLead[filePath.Replace(Path.DirectorySeparatorChar, '/')] = func;
+            if (func != null) FileLead[filePath] = func;
         }
 
         public static void LoadCompiledFunc(string file)
@@ -598,7 +598,7 @@ namespace WebServer
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[file[..^3].Replace(Path.DirectorySeparatorChar, '/')] = func;
+            FileLead[file[..^3]] = func;
         }
 
         public static void LoadPhpAssembly(string filePath)
@@ -619,7 +619,7 @@ namespace WebServer
                 typeof(Func<HttpContext, string, Task>), method
             );
 
-            FileLead[filePath.Replace(Path.DirectorySeparatorChar, '/')] = phpFunction;
+            FileLead[filePath] = phpFunction;
         }
         public static bool GenPhpAssembly(string filePath)
         {
@@ -631,7 +631,7 @@ namespace WebServer
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "ppc", // Assumes "ppc" is in your PATH
-                        Arguments = $"{filePath} -o {filePath}dll",
+                        Arguments = filePath+" -o "+filePath+"dll",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
