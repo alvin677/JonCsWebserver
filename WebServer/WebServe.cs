@@ -381,6 +381,7 @@ namespace WebServer
                 requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
                 requestMessage.Headers.TryAddWithoutValidation(":method", context.Request.Method);
                 requestMessage.Headers.TryAddWithoutValidation(":scheme", context.Request.Scheme);
+                requestMessage.Headers.TryAddWithoutValidation("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
                 requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", context.Connection.RemoteIpAddress?.ToString());
 
                 using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead))
