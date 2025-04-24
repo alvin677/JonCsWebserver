@@ -120,6 +120,7 @@ public class Program
                         {
                             config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
                             config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
+                            Startup.Reload2();
                             Console.WriteLine("Reloaded!");
                             break;
                         }
