@@ -498,10 +498,10 @@ namespace WebServer
             }
             else
             {
-                string file2 = file;
-                FileLead[file2] = DefHandle;
+                //string file2 = file;
+                FileLead[file] = DefHandle;
                 FileInfo fileInfo = new FileInfo(file);
-                FileIndex[file2] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
+                FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
             }
         }
         public static void IndexDirectories(string rootDirectory)
