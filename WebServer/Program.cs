@@ -47,7 +47,7 @@ public class Program
         Task.Run(() =>
         {
             string? cmd;
-            while ((cmd = Console.ReadLine()) != null && cmd != "" && act)
+            while (act && (cmd = Console.ReadLine()) != null && cmd != "")
             {
                 string[] Args = cmd.Split(" ");
                 switch (Args[0])
@@ -129,6 +129,11 @@ public class Program
                             Console.WriteLine("Shutting down..");
                             web.StopAsync();
                             act = false;
+                            break;
+                        }
+                    case "restart":
+                        {
+                            web.WaitForShutdown();
                             break;
                         }
                 }
