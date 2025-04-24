@@ -321,6 +321,7 @@ namespace WebServer
                     context.Request.Headers.ForEach((header) => {
                         client.Options.SetRequestHeader(header.Key, header.Value);
                     });
+                    client.Options.SetRequestHeader("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
                     //client.Options.Cookies = new CookieContainer();
                     string Domain = context.Request.Host.Value.Split(":")[0];
                     context.Request.Cookies.ForEach((cookie) => {
