@@ -180,6 +180,8 @@ namespace WebServer
                     }
                     catch (Exception e) { Console.WriteLine(dll + " failed: \n" + e.ToString()); }
                 }
+                CSScript.GlobalSettings.ClearSearchDirs();
+                CSScript.GlobalSettings.AddSearchDir(customLibPath);
             }
             catch (Exception e) { Console.WriteLine(e.ToString()); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
         }

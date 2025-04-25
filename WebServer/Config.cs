@@ -30,6 +30,8 @@ namespace WebServer
         public string HttpDll { get; set; } = "";
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
+        public ushort[] HttpsPorts { get; set; } = [];
+        public ushort[] HttpPorts { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
         public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -53,6 +55,8 @@ namespace WebServer
             WebSocketTimeout = 300;
             WebSocketEndpointTimeout = 30;
             MaxDirDepth = 15;
+            HttpsPorts = [ 443 ];
+            HttpPorts = [ 80 ];
             CertDir = "/etc/letsencrypt/live/";
             WWWdir = "";
             BackendDir = "/var/www";

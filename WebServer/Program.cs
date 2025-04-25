@@ -213,8 +213,8 @@ public class Program
                     catch (Exception ex) {
                         Console.WriteLine(ex.ToString());
                     }
-                    List<ushort> HttpPorts = new List<ushort>{ 80 };
-                    List<ushort> HttpsPorts = new List<ushort>{ 443 };
+                    List<ushort> HttpPorts = new List<ushort>(config.HttpPorts);
+                    List<ushort> HttpsPorts = new List<ushort>(config.HttpsPorts);
                     try { 
                         string? InHttpPort = args.FirstOrDefault(arg => arg.StartsWith("--httpPort"))?.Split("=")[1];
                         if (InHttpPort != null)
