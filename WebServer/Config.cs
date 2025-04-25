@@ -52,8 +52,8 @@ namespace WebServer
             gracePeriod = 5;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
-            PHP_MaxPoolSize = 15;
             WebSocketEndpointTimeout = 30;
+            PHP_MaxPoolSize = 15;
             MaxDirDepth = 15;
             HttpsPorts = [ 443 ];
             HttpPorts = [ 80 ];

@@ -19,9 +19,11 @@ public static class FastCGIConstants
 
 public class FastCGIClient
 {
-    private readonly string _host;
+    private ushort requestId = 0;
     private readonly int _port;
+    private readonly string _host;
     private readonly ConcurrentQueue<TcpClient> _connectionPool = new ConcurrentQueue<TcpClient>();
+    
     // private const int MaxPoolSize = Program.config.PHP_MaxPoolSize; // Adjust based on usage scenario
 
     public FastCGIClient(string host = "127.0.0.1", int port = 9000)
@@ -58,21 +60,27 @@ public class FastCGIClient
 #pragma warning restore CS8601 // Possible null reference assignment.
         }
 
-        await ExecutePhpScriptAsyncStream(context, path, env);
+        await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
     }
 
-    public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, Dictionary<string, string> env = null)
+    public ushort GetRequestId()
+    {
+        return requestId++;
+    }
+
+    public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env = null)
     {
         // Try to get an existing connection from the pool
-        if (!_connectionPool.TryDequeue(out TcpClient? client))
+        if (!_connectionPool.TryDequeue(out TcpClient? client) || !client.Connected)
         {
+            client?.Close();
             client = new TcpClient();
+            Console.WriteLine("Connecting new TcpClient.");
             await client.ConnectAsync(_host, _port);
         }
+        Console.WriteLine("Connected.");
 
         var stream = client.GetStream();
-
-        ushort requestId = 1;
         var buffer = new List<byte>();
 
         // ---- BEGIN_REQUEST
@@ -110,37 +118,81 @@ public class FastCGIClient
                 await stream.WriteAsync(tempBuffer, 0, bytesRead);
             }
 
-            // Final empty STDIN
-            var endStdin = BuildHeader(FastCGIConstants.STDIN, requestId, 0);
-            await stream.WriteAsync(endStdin, 0, endStdin.Length);
-            await stream.FlushAsync();
         }
+        // Always send empty STDIN at the end, even for GET
+        var endStdin = BuildHeader(FastCGIConstants.STDIN, requestId, 0);
+        await stream.WriteAsync(endStdin, 0, endStdin.Length);
+        await stream.FlushAsync();
+
 
         // ---- Read response
         try
         {
+            bool headersSent = false;
+            var stdoutBuffer = new MemoryStream();
+
             while (true)
             {
                 byte[] header = await ReadExactAsync(stream, 8);
-                if (header.Length < 8)
-                    break;
+                Console.WriteLine("Received CGI header of size: " + header.Length.ToString());
+                if (header.Length < 8) break;
 
                 byte type = header[1];
                 ushort contentLength = (ushort)((header[4] << 8) + header[5]);
                 byte paddingLength = header[6];
 
-                byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : new byte[0];
-                if (paddingLength > 0)
-                    await ReadExactAsync(stream, paddingLength); // skip
-
+                byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : Array.Empty<byte>();
+                if (paddingLength > 0) await ReadExactAsync(stream, paddingLength); // skip padding
+                Console.WriteLine("content:\n" + Encoding.UTF8.GetString(content));
                 switch (type)
                 {
                     case FastCGIConstants.STDOUT:
-                        if (content.Length > 0)
+                        Console.WriteLine("FastCGI STDOUT length:" + content.Length.ToString());
+                        if (content.Length == 0) continue;
+
+                        if (!headersSent)
+                        {
+                            stdoutBuffer.Write(content, 0, content.Length);
+
+                            var headerBytes = stdoutBuffer.ToArray();
+                            var headerEnd = FindDoubleCRLF(headerBytes);
+                            if (headerEnd != -1)
+                            {
+                                var headersPart = Encoding.UTF8.GetString(headerBytes, 0, headerEnd);
+                                var lines = headersPart.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                                foreach (var line in lines)
+                                {
+                                    var separatorIndex = line.IndexOf(':');
+                                    if (separatorIndex > 0)
+                                    {
+                                        var key = line[..separatorIndex].Trim();
+                                        var value = line[(separatorIndex + 1)..].Trim();
+
+                                        if (string.Equals(key, "Status", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            if (int.TryParse(value.Split(' ')[0], out int statusCode))
+                                                context.Response.StatusCode = statusCode;
+                                        }
+                                        else
+                                        {
+                                            context.Response.Headers[key] = value;
+                                        }
+                                    }
+                                }
+
+                                headersSent = true;
+                                var bodyStart = headerEnd + 4;
+                                if (bodyStart < headerBytes.Length)
+                                {
+                                    await context.Response.Body.WriteAsync(headerBytes, bodyStart, headerBytes.Length - bodyStart);
+                                }
+                            }
+                        }
+                        else
                         {
                             await context.Response.Body.WriteAsync(content, 0, content.Length);
-                            await context.Response.Body.FlushAsync();
                         }
+
                         break;
 
                     case FastCGIConstants.STDERR:
@@ -149,6 +201,7 @@ public class FastCGIClient
                         break;
 
                     case FastCGIConstants.END_REQUEST:
+                        Console.WriteLine("FastCGI received: END_REQUEST");
                         return;
                 }
             }
@@ -163,10 +216,12 @@ public class FastCGIClient
             if (_connectionPool.Count < Program.config.PHP_MaxPoolSize)
             {
                 _connectionPool.Enqueue(client);
+                Console.WriteLine("TcpClient was put back to queue..");
             }
             else
             {
                 client.Close(); // Optionally, close the connection if the pool size limit is reached
+                Console.WriteLine("TcpClient was closed..");
             }
         }
     }
@@ -234,4 +289,16 @@ public class FastCGIClient
         return result;
     }
 
+    private int FindDoubleCRLF(byte[] data)
+    {
+        for (int i = 0; i < data.Length - 3; i++)
+        {
+            if (data[i] == '\r' && data[i + 1] == '\n' &&
+                data[i + 2] == '\r' && data[i + 3] == '\n')
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
 }
