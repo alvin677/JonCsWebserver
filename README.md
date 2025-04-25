@@ -53,15 +53,5 @@ public class Is_CsScript
 ```
 
 ## PHP backend (Enable_PHP: true)
-PHP is a very popular backend language, so you can write `.php` files like the following and they will be compiled using **PeachPie**, so they shall not affect performance significantly:
-```php
-<?php
-namespace Is_PhpScript;
-
-function Run($context, $path) {
-    // Custom PHP logic
-    return "Processed: " . $path;
-}
-?>
-```
-To support PHP, run `dotnet tool install --global Peachpie.Compiler.Tools` (and Enable_PHP = true in config file)
+PHP is a very popular backend language.  
+To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance + set `Enable_PHP = true` in the `JonCsWebConfig.json` config file.
