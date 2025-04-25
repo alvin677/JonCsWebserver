@@ -17,6 +17,8 @@ namespace WebServer
         public uint WebSocketTimeout { get; set; }
         public uint WebSocketEndpointTimeout { get; set; }
         public ushort MaxDirDepth { get; set; }
+        public ushort[] HttpsPorts { get; set; } = [];
+        public ushort[] HttpPorts { get; set; } = [];
         public string CertDir { get; set; } = "";
         public string WWWdir { get; set; } = "";
         public string BackendDir { get; set; } = "";
@@ -30,8 +32,6 @@ namespace WebServer
         public string HttpDll { get; set; } = "";
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
-        public ushort[] HttpsPorts { get; set; } = [];
-        public ushort[] HttpPorts { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
         public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -62,7 +62,7 @@ namespace WebServer
             BackendDir = "/var/www";
             SessionsDir = "/var/sess/";
             SessionCookieName = "SSID";
-            FilterFromDomain = ".";
+            FilterFromDomain = "";
             DomainFilterTo = "";
             // PHP_FPM = IPAddress.Loopback.ToString() + ":9001";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
