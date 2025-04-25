@@ -104,7 +104,7 @@ namespace WebServer
                          context.Response.Headers[header.Key] = header.Value;
                      }
                      string FileToUse = string.Join("/", path);
-                     if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1].Substring(path[path.Count - 1].Length - 1) != "/")) // linking directly to a file or a directory
+                     if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1][path[path.Count - 1].Length - 1] != '/')) // linking directly to a file or a directory
                      {
                          while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && path.Count > 2) // file does not exist
                          {

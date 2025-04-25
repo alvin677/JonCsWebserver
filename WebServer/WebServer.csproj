@@ -29,6 +29,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.CodeDom" Version="9.0.0" />
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
+    <PackageReference Include="System.Formats.Asn1" Version="9.0.4" />
     <PackageReference Include="Z.Expressions.Eval" Version="6.2.3" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
