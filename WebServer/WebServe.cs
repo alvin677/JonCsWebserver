@@ -32,6 +32,7 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
+        private static FastCGIClient FastCGI = new FastCGIClient();
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
         public void ConfigureServices(IServiceCollection services)
         {
@@ -183,10 +184,13 @@ namespace WebServer
                 // CSScript.GlobalSettings.ClearSearchDirs();
                 CSScript.GlobalSettings.AddSearchDir(customLibPath);
                 CSScript.Evaluator.ReferenceAssembly("System");
-                CSScript.Evaluator.ReferenceAssembly("System.Object");
-                CSScript.Evaluator.ReferenceAssembly("System.Threading.Tasks.Task");
             }
             catch (Exception e) { Console.WriteLine(e.ToString()); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
+
+            if (Program.config.Enable_PHP)
+            {
+                FastCGI = new FastCGIClient(Program.config.PHP_FPM.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+            }
         }
     public static List<string> GetDomainBasedPath(HttpContext context)
         {
@@ -372,7 +376,7 @@ namespace WebServer
                         
                         await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
                     }
-                    catch(Exception e){
+                    catch(Exception){
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
                         client.Dispose();
                         webSocket.Abort();
@@ -444,7 +448,7 @@ namespace WebServer
                 }
                 return;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
@@ -526,7 +530,10 @@ namespace WebServer
             {
                 if (Ext == "php")
                 {
-                    try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
+                    try {
+                        FileLead[file] = FastCGI.Run;
+                        //if (GenPhpAssembly(file)) LoadPhpAssembly(file); 
+                    } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
                 else if (Ext == "phpdll")

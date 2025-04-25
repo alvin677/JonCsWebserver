@@ -16,6 +16,7 @@ namespace WebServer
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
         public uint WebSocketEndpointTimeout { get; set; }
+        public uint PHP_MaxPoolSize { get; set; }
         public ushort MaxDirDepth { get; set; }
         public ushort[] HttpsPorts { get; set; } = [];
         public ushort[] HttpPorts { get; set; } = [];
@@ -27,9 +28,7 @@ namespace WebServer
         public string Rand_Alphabet { get; set; } = "";
         public string FilterFromDomain { get; set; } = "";
         public string DomainFilterTo { get; set; } = "";
-        // public string PHP_FPM { get; set; } = "";
-        public string ThreadingDll { get; set; } = "";
-        public string HttpDll { get; set; } = "";
+        public string PHP_FPM { get; set; } = "";
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
@@ -53,6 +52,7 @@ namespace WebServer
             gracePeriod = 5;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
+            PHP_MaxPoolSize = 15;
             WebSocketEndpointTimeout = 30;
             MaxDirDepth = 15;
             HttpsPorts = [ 443 ];
@@ -64,10 +64,8 @@ namespace WebServer
             SessionCookieName = "SSID";
             FilterFromDomain = "";
             DomainFilterTo = "";
-            // PHP_FPM = IPAddress.Loopback.ToString() + ":9001";
+            PHP_FPM = "127.0.0.1:9000";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            ThreadingDll = "./System.Threading.Tasks.dll";
-            HttpDll = "./Microsoft.AspNetCore.Http.dll";
             indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
