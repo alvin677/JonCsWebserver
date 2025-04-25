@@ -18,6 +18,7 @@ using System.Security.Authentication;
 using CSScripting;
 using System.Text;
 using static System.Net.Mime.MediaTypeNames;
+using Microsoft.Scripting;
 
 namespace WebServer
 {
@@ -162,6 +163,24 @@ namespace WebServer
             httpClient.Timeout = TimeSpan.FromSeconds(300);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
+
+            string customLibPath = Path.Combine(AppContext.BaseDirectory, "deps");
+            try
+            {
+                CSScript.RoslynEvaluator.Reset(true);
+                CSScript.EvaluatorConfig.RefernceDomainAsemblies = false;
+                CSScript.Evaluator.DisableReferencingFromCode = true;
+                foreach (string dll in Directory.GetFiles(customLibPath, "*.dll"))
+                {
+                    try
+                    {
+                        CSScript.Evaluator.ReferenceAssembly(dll);
+                        Console.WriteLine(dll + " added to CSScript.Evaluator Assembly-References");
+                    }
+                    catch (Exception e) { Console.WriteLine(dll + " failed: \n" + e.ToString()); }
+                }
+            }
+            catch (Exception e) { Console.WriteLine(e.ToString()); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
         }
     public static List<string> GetDomainBasedPath(HttpContext context)
         {
@@ -423,7 +442,7 @@ namespace WebServer
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                Console.WriteLine(e);
+                // Console.WriteLine(e);
                 return;
             }
         }
@@ -488,12 +507,12 @@ namespace WebServer
             {
                 if (Ext == "_cs")
                 {
-                    try { CompileAndAddFunction(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    try { CompileAndAddFunction(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
                 else if (Ext == "_csdll")
                 {
-                    try { LoadCompiledFunc(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    try { LoadCompiledFunc(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
             }
@@ -501,12 +520,12 @@ namespace WebServer
             {
                 if (Ext == "php")
                 {
-                    try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    try { if (GenPhpAssembly(file)) LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
                 else if (Ext == "phpdll")
                 {
-                    try { LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(e); Console.ResetColor(); }
+                    try { LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
             }
@@ -587,14 +606,24 @@ namespace WebServer
         public static void CompileAndAddFunction(string filePath)
         {
             // Read the code from the file
-            string code = File.ReadAllText(filePath);
-
+            // string code = File.ReadAllText(filePath);
+            //CSScript.Evaluator.CompileAssemblyFromFile(filePath, filePath + "dll");
             dynamic script = CSScript.Evaluator
-                         .LoadCode(code);
-            Console.WriteLine(script);
+                         .LoadFile(filePath);
+            var runMethod = script.GetType().GetMethod("Run");
+            if (runMethod != null)
+            {
+                var func = new Func<HttpContext, string, Task>((context, path) =>
+                {
+                    // Invoke the Run method asynchronously
+                    return (Task)runMethod.Invoke(script, new object[] { context, path });
+                });
+
+                if (func != null) FileLead[filePath] = func;
+            }
             // Extract the function from the result
-            Func<HttpContext, string, Task>? func = script.Run;
-            if (func != null) FileLead[filePath] = func;
+            // Func<HttpContext, string, Task>? func = script.Run;
+            // if (func != null) FileLead[filePath] = func;
         }
 
         public static void LoadCompiledFunc(string file)
