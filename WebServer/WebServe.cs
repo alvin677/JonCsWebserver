@@ -168,8 +168,9 @@ namespace WebServer
             try
             {
                 CSScript.RoslynEvaluator.Reset(true);
-                CSScript.EvaluatorConfig.RefernceDomainAsemblies = false;
+                CSScript.EvaluatorConfig.ReferenceDomainAssemblies = false;
                 CSScript.Evaluator.DisableReferencingFromCode = true;
+                
                 foreach (string dll in Directory.GetFiles(customLibPath, "*.dll"))
                 {
                     try
@@ -606,10 +607,16 @@ namespace WebServer
         public static void CompileAndAddFunction(string filePath)
         {
             // Read the code from the file
-            // string code = File.ReadAllText(filePath);
+            string code = File.ReadAllText(filePath);
             //CSScript.Evaluator.CompileAssemblyFromFile(filePath, filePath + "dll");
+            try
+            {
+                CSScript.Evaluator.ReferenceAssembliesFromCode(code, [Path.Combine(AppContext.BaseDirectory, "deps")]);
+            }
+            catch (Exception) { }
             dynamic script = CSScript.Evaluator
-                         .LoadFile(filePath);
+                         .Eval(code);
+            
             var runMethod = script.GetType().GetMethod("Run");
             if (runMethod != null)
             {
@@ -621,9 +628,10 @@ namespace WebServer
 
                 if (func != null) FileLead[filePath] = func;
             }
+            
             // Extract the function from the result
-            // Func<HttpContext, string, Task>? func = script.Run;
-            // if (func != null) FileLead[filePath] = func;
+            //Func<HttpContext, string, Task>? func = script.Run;
+            //if (func != null) FileLead[filePath] = func;
         }
 
         public static void LoadCompiledFunc(string file)
