@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
@@ -136,7 +137,10 @@ public class FastCGIClient
                 {
                     case FastCGIConstants.STDOUT:
                         if (content.Length > 0)
+                        {
                             await context.Response.Body.WriteAsync(content, 0, content.Length);
+                            await context.Response.Body.FlushAsync();
+                        }
                         break;
 
                     case FastCGIConstants.STDERR:
@@ -215,7 +219,7 @@ public class FastCGIClient
 
     private static async Task<byte[]> ReadExactAsync(Stream stream, int length)
     {
-        byte[] buffer = new byte[length];
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
         int offset = 0;
         while (offset < length)
         {
@@ -224,6 +228,10 @@ public class FastCGIClient
                 break;
             offset += bytesRead;
         }
-        return buffer;
+
+        var result = buffer.Take(offset).ToArray(); // Copy only used part
+        ArrayPool<byte>.Shared.Return(buffer);
+        return result;
     }
+
 }
