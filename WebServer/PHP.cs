@@ -140,14 +140,19 @@ public class FastCGIClient
                 byte type = header[1];
                 ushort contentLength = (ushort)((header[4] << 8) + header[5]);
                 byte paddingLength = header[6];
-
+                Console.WriteLine("Based of header[4] (" + header[4] + ") and header[5] (" + header[5] + "), contentLength = " + contentLength.ToString());
                 byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : Array.Empty<byte>();
-                if (paddingLength > 0) await ReadExactAsync(stream, paddingLength); // skip padding
+                if (paddingLength > 0)
+                {
+                    Console.WriteLine("Skip padding: " + paddingLength.ToString());
+                    await ReadExactAsync(stream, paddingLength); // skip padding
+                }
                 Console.WriteLine("content:\n" + Encoding.UTF8.GetString(content));
                 switch (type)
                 {
                     case FastCGIConstants.STDOUT:
-                        Console.WriteLine("FastCGI STDOUT length:" + content.Length.ToString());
+                        Console.WriteLine("FastCGI STDOUT length: " + content.Length.ToString());
+                        Console.WriteLine("FastCGI STDOUT byte[] content = " + content);
                         if (content.Length == 0) continue;
 
                         if (!headersSent)
