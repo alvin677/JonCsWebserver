@@ -34,15 +34,17 @@ public class FastCGIClient
 
     public async Task Run(HttpContext context, string path)
     {
+        string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]);
+        string reqpath = path.Substring(docRoot.Length);
         // ---- PARAMS
         var env = new Dictionary<string, string>
         {
             { "GATEWAY_INTERFACE", "FastCGI/1.0" },
             { "REQUEST_METHOD", context.Request.Method },
-            { "REQUEST_URI", context.Request.Path },
+            { "REQUEST_URI", reqpath },
             { "SCRIPT_FILENAME", path },
-            { "SCRIPT_NAME", "/" + Path.GetFileName(path) },
-            { "DOCUMENT_ROOT", Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]) },
+            { "SCRIPT_NAME", reqpath },
+            { "DOCUMENT_ROOT", docRoot },
             { "QUERY_STRING", context.Request.QueryString.HasValue ? context.Request.QueryString.Value.TrimStart('?') : "" },
             { "SERVER_SOFTWARE", "JonCsWebServer" },
             { "REMOTE_ADDR", context.Connection.RemoteIpAddress != null ? context.Connection.RemoteIpAddress.ToString() : "127.0.0.1" },
@@ -51,6 +53,7 @@ public class FastCGIClient
             { "SERVER_PORT", context.Request.Host.Port.HasValue ? context.Request.Host.Port.Value.ToString() : "80" },
             { "SERVER_NAME", context.Request.Host.Host },
             { "SERVER_PROTOCOL", context.Request.Protocol },
+            { "REDIRECT_STATUS", "200" },
             { "CONTENT_LENGTH", context.Request.ContentLength.HasValue ? context.Request.ContentLength.Value.ToString() : "0" }
         };
         foreach (var header in context.Request.Headers)
