@@ -76,52 +76,63 @@ public class FastCGIClient
             client?.Close();
             client = new TcpClient();
             Console.WriteLine("Connecting new TcpClient.");
+            client.ReceiveTimeout = 300000;
+            client.SendTimeout = 300000;
             await client.ConnectAsync(_host, _port);
         }
         Console.WriteLine("Connected.");
 
         var stream = client.GetStream();
-        var buffer = new List<byte>();
 
-        // ---- BEGIN_REQUEST
-        buffer.AddRange(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
-        buffer.AddRange(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, 0x00, 0x00, 0x00, 0x00, 0x00 });
 
+        // --- Step 1: MemoryStream for BEGIN + PARAMS ---
+        var fastCgiStream = new MemoryStream();
+
+        // BEGIN_REQUEST
+        fastCgiStream.Write(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
+        fastCgiStream.Write(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+
+        // PARAMS
         var paramData = new List<byte>();
         foreach (var kv in env)
             paramData.AddRange(EncodeNameValuePair(kv.Key, kv.Value));
 
-        buffer.AddRange(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
-        buffer.AddRange(paramData);
+        fastCgiStream.Write(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
+        fastCgiStream.Write(paramData.ToArray());
 
-        // End of PARAMS (empty)
-        buffer.AddRange(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
+        // Empty PARAMS
+        fastCgiStream.Write(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
 
-        await stream.WriteAsync(buffer.ToArray(), 0, buffer.Count);
+        // --- Step 2: Send the setup ---
+        fastCgiStream.Position = 0;
+        await fastCgiStream.CopyToAsync(stream);
         await stream.FlushAsync();
 
-        // ----- Now stream POST body
+        // --- Step 3: Stream the body ---
         if (context.Request.Method != HttpMethods.Get &&
             context.Request.Method != HttpMethods.Head &&
             context.Request.Method != HttpMethods.Options)
         {
-            context.Request.EnableBuffering(); // Allow re-reading the stream
+            context.Request.EnableBuffering();
             context.Request.Body.Position = 0;
 
             var tempBuffer = new byte[8192];
             int bytesRead;
-
             while ((bytesRead = await context.Request.Body.ReadAsync(tempBuffer, 0, tempBuffer.Length)) > 0)
             {
-                var chunkHeader = BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead);
-                await stream.WriteAsync(chunkHeader, 0, chunkHeader.Length);
-                await stream.WriteAsync(tempBuffer, 0, bytesRead);
-            }
+                // Write header for this body chunk
+                var bodyHeader = BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead);
+                await stream.WriteAsync(bodyHeader);
 
+                // Write body chunk
+                await stream.WriteAsync(tempBuffer.AsMemory(0, bytesRead));
+            }
         }
-        // Always send empty STDIN at the end, even for GET
-        var endStdin = BuildHeader(FastCGIConstants.STDIN, requestId, 0);
-        await stream.WriteAsync(endStdin, 0, endStdin.Length);
+
+        // --- Step 4: Final empty STDIN ---
+        await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, 0));
+
+        // --- Step 5: Flush once ---
         await stream.FlushAsync();
 
 
