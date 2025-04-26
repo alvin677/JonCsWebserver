@@ -18,6 +18,7 @@ public class Program
     public static bool act = true;
     public static string WWWdir = "";
     public static string BackendDir = "/var/www";
+    public static string LocalIP = IPFinder.GetLocalIPAddress();
     public static Config config = new Config();
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.InvariantCultureIgnoreCase);
     public static void Main(string[] args)

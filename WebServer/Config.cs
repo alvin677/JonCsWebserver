@@ -114,6 +114,7 @@ namespace WebServer
 
             DomainAlias = new Dictionary<string, string>()
             {
+                ["www.example.com"] = "example.com",
                 ["www.jonhosting.com"] = "jonhosting.com",
                 ["www.jontv.me"] = "jontv.me"
             };

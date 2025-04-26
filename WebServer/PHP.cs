@@ -39,13 +39,15 @@ public class FastCGIClient
         {
             { "GATEWAY_INTERFACE", "FastCGI/1.0" },
             { "REQUEST_METHOD", context.Request.Method },
+            { "REQUEST_URI", context.Request.Path },
             { "SCRIPT_FILENAME", path },
-            { "SCRIPT_NAME", Path.GetFileName(path) },
+            { "SCRIPT_NAME", "/" + Path.GetFileName(path) },
+            { "DOCUMENT_ROOT", Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]) },
             { "QUERY_STRING", context.Request.QueryString.HasValue ? context.Request.QueryString.Value.TrimStart('?') : "" },
             { "SERVER_SOFTWARE", "JonCsWebServer" },
             { "REMOTE_ADDR", context.Connection.RemoteIpAddress != null ? context.Connection.RemoteIpAddress.ToString() : "127.0.0.1" },
             { "REMOTE_PORT", context.Connection.RemotePort.ToString() },
-            { "SERVER_ADDR", context.Request.Host.Host },
+            { "SERVER_ADDR", Program.LocalIP },
             { "SERVER_PORT", context.Request.Host.Port.HasValue ? context.Request.Host.Port.Value.ToString() : "80" },
             { "SERVER_NAME", context.Request.Host.Host },
             { "SERVER_PROTOCOL", context.Request.Protocol },
@@ -53,11 +55,15 @@ public class FastCGIClient
         };
         foreach (var header in context.Request.Headers)
         {
-            if (string.IsNullOrEmpty(header.Value)) continue;
+            var headerValue = header.Value.ToString();
+            if (string.IsNullOrEmpty(headerValue)) continue;
             var headerName = "HTTP_" + header.Key.ToUpper().Replace('-', '_');
-#pragma warning disable CS8601 // Possible null reference assignment.
-            env[headerName] = header.Value;
-#pragma warning restore CS8601 // Possible null reference assignment.
+            env[headerName] = headerValue;
+        }
+
+        foreach (var item in env)
+        {
+            Console.WriteLine("env " + item.Key + " = " + item.Value);
         }
 
         await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
@@ -65,7 +71,8 @@ public class FastCGIClient
 
     public ushort GetRequestId()
     {
-        return requestId++;
+        requestId++;
+        return requestId == 0 ? ++requestId : requestId;
     }
 
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env = null)
@@ -229,7 +236,7 @@ public class FastCGIClient
         finally
         {
             // Return the TcpClient back to the pool
-            if (_connectionPool.Count < Program.config.PHP_MaxPoolSize)
+            if (_connectionPool.Count < Program.config.PHP_MaxPoolSize && client.Connected)
             {
                 _connectionPool.Enqueue(client);
                 Console.WriteLine("TcpClient was put back to queue..");
