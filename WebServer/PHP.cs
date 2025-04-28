@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using WebServer;
@@ -21,20 +22,58 @@ public static class FastCGIConstants
 public class FastCGIClient
 {
     private ushort requestId = 0;
-    private readonly int _port;
-    private readonly string _host;
-    private readonly ConcurrentQueue<TcpClient> _connectionPool = new ConcurrentQueue<TcpClient>();
+    //private readonly int _port;
+    //private readonly string _host;
+    public ConnectionInfo connect;
+    private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
     // private const int MaxPoolSize = Program.config.PHP_MaxPoolSize; // Adjust based on usage scenario
-    public FastCGIClient(string host = "127.0.0.1", int port = 9000)
+    /*public FastCGIClient(string host = "127.0.0.1", int port = 9000)
     {
+        connect = ParseEndpoint(host + ":" + port.ToString());
         _host = host;
         _port = port;
-    }
-    public static bool IsUnixSocket(string address)
+    }*/
+    public FastCGIClient(string conn = "127.0.0.1:9000")
     {
-        // If it starts with '/' assume it's a UNIX socket
-        return address.StartsWith("/");
+        connect = ParseEndpoint(conn);
     }
+    public enum EndpointType
+    {
+        IP,
+        Unix
+    }
+
+    public class ConnectionInfo
+    {
+        public EndpointType Type { get; init; }
+        public IPEndPoint? IpEndPoint { get; init; }
+        public UnixDomainSocketEndPoint? UnixEndPoint { get; init; }
+    }
+    public static ConnectionInfo ParseEndpoint(string endpoint)
+    {
+        if (endpoint.Contains(':'))
+        {
+            var parts = endpoint.Split(':', 2);
+            if (!IPAddress.TryParse(parts[0], out var ip))
+                ip = Dns.GetHostAddresses(parts[0])[0];
+
+            int port = int.Parse(parts[1]);
+            return new ConnectionInfo
+            {
+                Type = EndpointType.IP,
+                IpEndPoint = new IPEndPoint(ip, port)
+            };
+        }
+        else
+        {
+            return new ConnectionInfo
+            {
+                Type = EndpointType.Unix,
+                UnixEndPoint = new UnixDomainSocketEndPoint(endpoint)
+            };
+        }
+    }
+
     public async Task Run(HttpContext context, string path)
     {
         string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
@@ -89,21 +128,21 @@ public class FastCGIClient
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env)
     {
         // Try to get an existing connection from the pool
-        if (!_connectionPool.TryDequeue(out TcpClient? client) || !client.Connected)
+        if (!_connectionPool.TryDequeue(out TcpUnixClient? client) || !client.Connected)
         {
             client?.Close();
-            client = new TcpClient();
+            client = await TcpUnixClient.Create();
 #if DEBUG
             Console.WriteLine("Connecting new TcpClient.");
 #endif
             client.ReceiveTimeout = Program.config.FCGI_ReceiveTimeout;
             client.SendTimeout = Program.config.FCGI_SendTimeout;
-            await client.ConnectAsync(_host, _port);
+            //await client.ConnectAsync(_host, _port);
         }
 #if DEBUG
         Console.WriteLine("Connected.");
 #endif
-        var stream = client.GetStream();
+        var stream = client.Stream;
 
         // --- Step 1: Prepare BEGIN + PARAMS ---
         IStreamWriter fastCgiStream = Program.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);

@@ -29,7 +29,7 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
-        private static FastCGIClient FastCGI = new FastCGIClient();
+        public static FastCGIClient FastCGI = new FastCGIClient();
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
         public void ConfigureServices(IServiceCollection services)
         {
@@ -186,7 +186,7 @@ namespace WebServer
 
             if (Program.config.Enable_PHP)
             {
-                FastCGI = new FastCGIClient(Program.config.PHP_FPM.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
             }
         }
     public static List<string> GetDomainBasedPath(HttpContext context)
