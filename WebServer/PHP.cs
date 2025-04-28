@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 using WebServer;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 public static class FastCGIConstants
 {
@@ -160,7 +161,7 @@ public class FastCGIClient
         {
             bool headersSent = false;
             using var stdoutBuffer = new MemoryStream();
-
+            
             while (true)
             {
                 byte[] header = await ReadExactAsync(stream, 8);
@@ -192,8 +193,8 @@ public class FastCGIClient
                         if (!headersSent)
                         {
                             stdoutBuffer.Write(content, 0, content.Length);
-                            var headerBytes = stdoutBuffer.ToArray();
-                            int headerEnd = FindDoubleCRLF(headerBytes);
+                            var headerBytes = stdoutBuffer.GetBuffer();
+                            int headerEnd = FindDoubleCRLF(headerBytes.AsSpan(0, (int) stdoutBuffer.Length));
 
                             if (headerEnd != -1)
                             {
@@ -222,12 +223,12 @@ public class FastCGIClient
                                 headersSent = true;
                                 var bodyStart = headerEnd + 4;
                                 if (bodyStart < headerBytes.Length)
-                                    await context.Response.Body.WriteAsync(headerBytes, bodyStart, headerBytes.Length - bodyStart);
+                                    await context.Response.Body.WriteAsync(headerBytes.AsMemory(bodyStart, headerBytes.Length - bodyStart));
                             }
                         }
                         else
                         {
-                            await context.Response.Body.WriteAsync(content, 0, content.Length);
+                            await context.Response.Body.WriteAsync(content.AsMemory(0, content.Length));
                         }
                         break;
 
@@ -357,7 +358,18 @@ public class FastCGIClient
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }
-
+    private int FindDoubleCRLF(Span<byte> data)
+    {
+        for (int i = 0; i < data.Length - 3; i++)
+        {
+            if (data[i] == '\r' && data[i + 1] == '\n' &&
+                data[i + 2] == '\r' && data[i + 3] == '\n')
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
     private int FindDoubleCRLF(byte[] data)
     {
         for (int i = 0; i < data.Length - 3; i++)
