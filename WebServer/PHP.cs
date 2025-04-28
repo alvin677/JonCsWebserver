@@ -158,14 +158,15 @@ public class FastCGIClient
         {
             bool headersSent = false;
             using var stdoutBuffer = new MemoryStream();
-            
+            byte[] header = new byte[8];
             while (true)
             {
-                byte[] header = await ReadExactAsync(stream, 8);
+                bool success = await ReadExactAsync(stream, header, 8);
+
 #if DEBUG
                 Console.WriteLine("Received CGI header of size: " + header.Length.ToString());
 #endif
-                if (header.Length < 8) break; // connection closed prematurely
+                if (!success) break; // connection closed prematurely
 
                 byte type = header[1];
                 ushort contentLength = (ushort)((header[4] << 8) | header[5]);
@@ -355,6 +356,37 @@ public class FastCGIClient
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }
+    private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, int length)
+    {
+        int offset = 0;
+        while (offset < length)
+        {
+            int read = await stream.ReadAsync(buffer, offset, length - offset);
+            if (read == 0)
+            {
+                // Connection closed before reading expected amount
+                return false;
+            }
+            offset += read;
+        }
+        return true;
+    }
+    private static async Task<byte[]> ReadExactAsyncReturnArray(Stream stream, int length)
+    {
+        byte[] buffer = new byte[length];
+        int offset = 0;
+        while (offset < length)
+        {
+            int read = await stream.ReadAsync(buffer, offset, length - offset);
+            if (read == 0)
+            {
+                throw new IOException("Connection closed before reading expected bytes.");
+            }
+            offset += read;
+        }
+        return buffer;
+    }
+
     private int FindDoubleCRLF(Span<byte> data)
     {
         for (int i = 0; i < data.Length - 3; i++)
