@@ -13,6 +13,13 @@ Using our `--backend` works very well for serving static files too.
 
 ## Proxy
 Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
+```json
+  "ForwardExt": {
+    "deno": "https://{domain}:8443",
+    "bun": "http://{domain}:3000"
+  }
+```
+In the example above, files.deno would be proxied to https://sameDomain:8443/samePath?sameQuery, and files.bun would be proxied to http://sameDomain:3000/samePath?sameQuery
 
 ## C# backend (Enable_CS: true)
 You can write C# files for backend.<br/>
