@@ -3,6 +3,7 @@
     interface IStreamWriter
     {
         Task WriteAsync(Memory<byte> buffer);  // Change to accept Memory<byte>
+        Task WriteAsync(ReadOnlyMemory<byte> buffer);
         Task FlushAsync();
     }
 
@@ -11,10 +12,11 @@
         private readonly Stream _stream;
         public DirectStreamWriter(Stream stream) => _stream = stream;
         public async Task WriteAsync(Memory<byte> buffer) => await _stream.WriteAsync(buffer);  // Direct write with Memory<byte>
-        public Task FlushAsync()
+        public async Task WriteAsync(ReadOnlyMemory<byte> buffer) => await _stream.WriteAsync(buffer);
+        public async Task FlushAsync()
         {
-            _stream.FlushAsync();
-            return Task.CompletedTask; // No need to flush manually
+            await _stream.FlushAsync();
+            //return Task.CompletedTask; // No need to flush manually
         }
     }
 
@@ -24,6 +26,7 @@
         private readonly Stream _stream;
         public BufferedStreamWriter(Stream stream) => _stream = stream;
         public async Task WriteAsync(Memory<byte> buffer) => await _memoryStream.WriteAsync(buffer);  // Write async with Memory<byte>
+        public async Task WriteAsync(ReadOnlyMemory<byte> buffer) => await _memoryStream.WriteAsync(buffer);
         public async Task FlushAsync()
         {
             _memoryStream.Position = 0;

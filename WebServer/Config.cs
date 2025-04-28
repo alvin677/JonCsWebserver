@@ -14,6 +14,8 @@ namespace WebServer
         public long? MaxRequestBodySize { get; set; }
         public double bytesPerSecond { get; set; }
         public int gracePeriod { get; set; }
+        public int FCGI_ReceiveTimeout { get; set; }
+        public int FCGI_SendTimeout { get; set; }
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
         public uint WebSocketEndpointTimeout { get; set; }
@@ -52,6 +54,8 @@ namespace WebServer
             MaxRequestBodySize = 30000000;
             bytesPerSecond = 240;
             gracePeriod = 5;
+            FCGI_ReceiveTimeout = 300000;
+            FCGI_SendTimeout = 300000;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
             WebSocketEndpointTimeout = 30;

@@ -1,4 +1,5 @@
 ﻿using CSScripting;
+using CSScriptLib;
 using Microsoft.AspNetCore.Http;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -15,7 +16,8 @@ public static class FastCGIConstants
     public const byte STDOUT = 6;
     public const byte STDERR = 7;
     public const byte END_REQUEST = 3;
-    public const byte ROLE_RESPONDER = 1;
+    public const byte ROLE_RESPONDER = 0x01;
+    public const byte FCGI_KEEP_CONN = 0x01;
 }
 
 public class FastCGIClient
@@ -87,9 +89,11 @@ public class FastCGIClient
         {
             client?.Close();
             client = new TcpClient();
+#if DEBUG
             Console.WriteLine("Connecting new TcpClient.");
-            client.ReceiveTimeout = 300000;
-            client.SendTimeout = 300000;
+#endif
+            client.ReceiveTimeout = Program.config.FCGI_ReceiveTimeout;
+            client.SendTimeout = Program.config.FCGI_SendTimeout;
             await client.ConnectAsync(_host, _port);
         }
         Console.WriteLine("Connected.");
@@ -100,18 +104,22 @@ public class FastCGIClient
         IStreamWriter fastCgiStream = Program.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
 
         // BEGIN_REQUEST
-        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
-        await fastCgiStream.WriteAsync(new Memory<byte>(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+        await SendRecord(fastCgiStream, FastCGIConstants.BEGIN_REQUEST, requestId, new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
+        // await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
+        // await fastCgiStream.WriteAsync(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
 
         // PARAMS
         var paramData = new List<byte>();
         foreach (var kv in env)
             paramData.AddRange(EncodeNameValuePair(kv.Key, kv.Value));
-        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
-        await fastCgiStream.WriteAsync(paramData.ToArray());
+        //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
+        //await fastCgiStream.WriteAsync(paramData.ToArray());
+
+        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramData.ToArray());
+        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, ReadOnlyMemory<byte>.Empty); // Empty PARAMS
 
         // Empty PARAMS
-        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
+        //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
 
         // --- Step 2: Send the setup ---
         await fastCgiStream.FlushAsync(); // Only flush, wrapper handles the rest. Will use the stream var below since loading POST to memory would take a lot of RAM, which would be impractical.
@@ -128,13 +136,16 @@ public class FastCGIClient
             int bytesRead;
             while ((bytesRead = await context.Request.Body.ReadAsync(tempBuffer, 0, tempBuffer.Length)) > 0)
             {
-                await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead));
-                await stream.WriteAsync(tempBuffer.AsMemory(0, bytesRead));
+                await SendRecord(stream, FastCGIConstants.STDIN, requestId, tempBuffer.AsMemory(0, bytesRead));
+                //await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead));
+                //await stream.WriteAsync(tempBuffer.AsMemory(0, bytesRead));
             }
+            await stream.FlushAsync();
         }
 
         // Final empty STDIN
-        await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, 0));
+        await SendRecord(stream, FastCGIConstants.STDIN, requestId, ReadOnlyMemory<byte>.Empty);
+        //await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, 0));
         await stream.FlushAsync(); // ensure all data is sent.
 
         // --- Step 3: Read FastCGI Response ---
@@ -242,11 +253,33 @@ public class FastCGIClient
         }
     }
 
+    private static async Task SendRecord(Stream stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
+    {
+        ushort contentLength = (ushort)content.Length;
+        (var header, var paddingLength) = BuildHeader(type, requestId, contentLength);
 
-    private static byte[] BuildHeader(byte type, ushort requestId, ushort contentLength)
+        await stream.WriteAsync(header);
+        if (contentLength > 0)
+            await stream.WriteAsync(content);
+        if (paddingLength > 0)
+            await stream.WriteAsync(new byte[paddingLength]);
+    }
+    private static async Task SendRecord(IStreamWriter stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
+    {
+        ushort contentLength = (ushort)content.Length;
+        (var header, var paddingLength) = BuildHeader(type, requestId, contentLength);
+
+        await stream.WriteAsync(header);
+        if (contentLength > 0)
+            await stream.WriteAsync(content);
+        if (paddingLength > 0)
+            await stream.WriteAsync(new byte[paddingLength]);
+    }
+    
+    private static (byte[] header, byte paddingLength) BuildHeader(byte type, ushort requestId, ushort contentLength)
     {
         byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
-        return new byte[]
+        return (new byte[]
         {
             FastCGIConstants.VERSION,
             type,
@@ -256,7 +289,7 @@ public class FastCGIClient
             (byte)(contentLength & 0xFF),
             paddingLength,
             0x00 // reserved
-        };
+        }, paddingLength);
     }
 
     private static IEnumerable<byte> EncodeNameValuePair(string name, string value)
