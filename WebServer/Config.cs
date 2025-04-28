@@ -83,6 +83,7 @@ namespace WebServer
             ExtTypes = new Dictionary<string, string>()
             {
                 ["html"] = "text/html",
+                ["php"] = "text/html",
                 ["txt"] = "text/plain",
                 ["log"] = "text/plain",
                 ["css"] = "text/css",
