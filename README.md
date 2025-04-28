@@ -70,4 +70,4 @@ How to setup?
 4. `systemctl restart php8.2-fpm` (modify `php8.2` with your php-fpm version)
 5. `JonCsWebConfig.json`:
 -  turn `Enable_PHP` to true,
--  and make sure the `PHP_FPM` is set to the correct ip:port (`127.0.0.1:9000` for example)
+-  and make sure the `PHP_FPM` is set to the correct Unix socket OR ip:port (`/run/php/php8.2-fpm.sock` for Unix socket, or `127.0.0.1:9000` if you set port, for example)
