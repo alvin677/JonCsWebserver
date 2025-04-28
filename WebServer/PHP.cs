@@ -1,12 +1,9 @@
-﻿using CSScripting;
-using CSScriptLib;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 using WebServer;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 public static class FastCGIConstants
 {
