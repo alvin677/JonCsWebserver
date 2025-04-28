@@ -10,8 +10,6 @@ using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 using Microsoft.AspNetCore.ResponseCompression;
 using WebServer;
-using System.Collections.Immutable;
-using System.Net.WebSockets;
 
 public class Program
 {

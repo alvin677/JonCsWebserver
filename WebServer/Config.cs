@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
-using System.Net;
 
 namespace WebServer
 {

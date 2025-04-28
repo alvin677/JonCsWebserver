@@ -16,9 +16,6 @@ using CSScriptLib;
 using System.Buffers;
 using System.Security.Authentication;
 using CSScripting;
-using System.Text;
-using static System.Net.Mime.MediaTypeNames;
-using Microsoft.Scripting;
 
 namespace WebServer
 {
