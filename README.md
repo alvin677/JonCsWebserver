@@ -54,4 +54,11 @@ public class Is_CsScript
 
 ## PHP backend (Enable_PHP: true)
 PHP is a very popular backend language.  
-To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance + set `Enable_PHP = true` in the `JonCsWebConfig.json` config file.
+To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance + set `Enable_PHP = true` in the `JonCsWebConfig.json` config file.<br/>
+How to setup?
+1. `nano /etc/php*/*/fpm/pool.d/*.conf`
+2. Set port
+3. `systemctl restart php8.2-fpm` (modify `php8.2` with your php-fpm version)
+4. `JonCsWebConfig.json`:
+-  turn `Enable_PHP` to true,
+-  and make sure the `PHP_FPM` is set to the correct ip:port (`127.0.0.1:9000` for example)
