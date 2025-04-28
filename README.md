@@ -58,7 +58,7 @@ To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS
 How to setup?
 1. `nano /etc/php*/*/fpm/pool.d/*.conf`
 2. Set port under `listen =` (so `listen = 9000` for example)
-3. Also while you are editing that file, we recommend to set `pm.max_children` from `5` -> `28` (or whatever amount of cores you have, preferebly), and `pm.start_servers` from `2` -> `4`.
+3. Also while you are editing that file, we recommend to set `pm.max_children` from `5` -> `28` (or whatever amount of cores you have, preferebly), and `pm.start_servers` from `2` -> `3` (for starters, use your own settings if you know what you are doing).
 4. `systemctl restart php8.2-fpm` (modify `php8.2` with your php-fpm version)
 5. `JonCsWebConfig.json`:
 -  turn `Enable_PHP` to true,
