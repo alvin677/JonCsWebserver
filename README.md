@@ -65,7 +65,7 @@ PHP is a very popular backend language.
 To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance + set `Enable_PHP = true` in the `JonCsWebConfig.json` config file.<br/>
 How to setup?
 1. `nano /etc/php*/*/fpm/pool.d/*.conf`
-2. Set port under `listen =` (so `listen = 9000` for example)
+2. If possible, use `listen = /run/php/php8.2-fpm.sock` (replace php8.2-fpm with your version). If not possible to use Unix socket, set port under `listen =` (so `listen = 9000` for example) (Unix socket ~40 ms lower latency compared to TCP on localhost)
 3. Also while you are editing that file, we recommend to set `pm.max_children` from `5` -> `28` (or whatever amount of cores you have, preferebly), and `pm.start_servers` from `2` -> `3` (for starters, use your own settings if you know what you are doing).
 4. `systemctl restart php8.2-fpm` (modify `php8.2` with your php-fpm version)
 5. `JonCsWebConfig.json`:
