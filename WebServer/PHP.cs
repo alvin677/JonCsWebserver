@@ -67,12 +67,12 @@ public class FastCGIClient
             var headerName = "HTTP_" + header.Key.ToUpper().Replace('-', '_');
             env[headerName] = headerValue;
         }
-
+#if DEBUG
         foreach (var item in env)
         {
             Console.WriteLine("env " + item.Key + " = " + item.Value);
         }
-
+#endif
         await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
     }
 
@@ -96,8 +96,9 @@ public class FastCGIClient
             client.SendTimeout = Program.config.FCGI_SendTimeout;
             await client.ConnectAsync(_host, _port);
         }
+#if DEBUG
         Console.WriteLine("Connected.");
-
+#endif
         var stream = client.GetStream();
 
         // --- Step 1: Prepare BEGIN + PARAMS ---
@@ -157,12 +158,16 @@ public class FastCGIClient
             while (true)
             {
                 byte[] header = await ReadExactAsync(stream, 8);
+#if DEBUG
                 Console.WriteLine("Received CGI header of size: " + header.Length.ToString());
+#endif
                 if (header.Length < 8) break; // connection closed prematurely
 
                 byte type = header[1];
                 ushort contentLength = (ushort)((header[4] << 8) | header[5]);
+#if DEBUG
                 Console.WriteLine("Based of header[4] (" + header[4] + ") and header[5] (" + header[5] + "), contentLength = " + contentLength.ToString());
+#endif
                 byte paddingLength = header[6];
 
                 byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : Array.Empty<byte>();
@@ -172,8 +177,10 @@ public class FastCGIClient
                 switch (type)
                 {
                     case FastCGIConstants.STDOUT:
+#if DEBUG
                         Console.WriteLine("FastCGI STDOUT length: " + content.Length.ToString());
                         Console.WriteLine("FastCGI STDOUT byte[] content = " + content);
+#endif
                         if (content.Length == 0) continue;
 
                         if (!headersSent)
@@ -243,12 +250,16 @@ public class FastCGIClient
             if (_connectionPool.Count < Program.config.PHP_MaxPoolSize && client.Connected)
             {
                 _connectionPool.Enqueue(client);
+#if DEBUG
                 Console.WriteLine("TcpClient was put back to queue..");
+#endif
             }
             else
             {
                 client.Close();
+#if DEBUG
                 Console.WriteLine("TcpClient was closed..");
+#endif
             }
         }
     }
