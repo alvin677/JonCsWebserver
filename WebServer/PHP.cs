@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using CSScripting;
+using Microsoft.AspNetCore.Http;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
+using WebServer;
 
 public static class FastCGIConstants
 {
@@ -13,7 +15,6 @@ public static class FastCGIConstants
     public const byte STDOUT = 6;
     public const byte STDERR = 7;
     public const byte END_REQUEST = 3;
-
     public const byte ROLE_RESPONDER = 1;
 }
 
@@ -23,25 +24,22 @@ public class FastCGIClient
     private readonly int _port;
     private readonly string _host;
     private readonly ConcurrentQueue<TcpClient> _connectionPool = new ConcurrentQueue<TcpClient>();
-    
     // private const int MaxPoolSize = Program.config.PHP_MaxPoolSize; // Adjust based on usage scenario
-
     public FastCGIClient(string host = "127.0.0.1", int port = 9000)
     {
         _host = host;
         _port = port;
     }
-
     public async Task Run(HttpContext context, string path)
     {
-        string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]);
-        string reqpath = path.Substring(docRoot.Length);
+        string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
+        string reqpath = path.Substring(docRoot.Length); // takes the file's path and slices to after the docRoot, so /var/www/examplecom/test/index.php -> /test/index.php
         // ---- PARAMS
         var env = new Dictionary<string, string>
         {
             { "GATEWAY_INTERFACE", "FastCGI/1.0" },
             { "REQUEST_METHOD", context.Request.Method },
-            { "REQUEST_URI", reqpath },
+            { "REQUEST_URI", reqpath + context.Request.QueryString },
             { "SCRIPT_FILENAME", path },
             { "SCRIPT_NAME", reqpath },
             { "DOCUMENT_ROOT", docRoot },
@@ -56,6 +54,10 @@ public class FastCGIClient
             { "REDIRECT_STATUS", "200" },
             { "CONTENT_LENGTH", context.Request.ContentLength.HasValue ? context.Request.ContentLength.Value.ToString() : "0" }
         };
+        if (context.Request.Headers.TryGetValue("Content-Type", out var contentType))
+        {
+            env["CONTENT_TYPE"] = contentType.ToString();
+        }
         foreach (var header in context.Request.Headers)
         {
             var headerValue = header.Value.ToString();
@@ -78,7 +80,7 @@ public class FastCGIClient
         return requestId == 0 ? ++requestId : requestId;
     }
 
-    public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env = null)
+    public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env)
     {
         // Try to get an existing connection from the pool
         if (!_connectionPool.TryDequeue(out TcpClient? client) || !client.Connected)
@@ -94,31 +96,27 @@ public class FastCGIClient
 
         var stream = client.GetStream();
 
-
-        // --- Step 1: MemoryStream for BEGIN + PARAMS ---
-        var fastCgiStream = new MemoryStream();
+        // --- Step 1: Prepare BEGIN + PARAMS ---
+        IStreamWriter fastCgiStream = Program.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
 
         // BEGIN_REQUEST
-        fastCgiStream.Write(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
-        fastCgiStream.Write(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
+        await fastCgiStream.WriteAsync(new Memory<byte>(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
 
         // PARAMS
         var paramData = new List<byte>();
         foreach (var kv in env)
             paramData.AddRange(EncodeNameValuePair(kv.Key, kv.Value));
-
-        fastCgiStream.Write(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
-        fastCgiStream.Write(paramData.ToArray());
+        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
+        await fastCgiStream.WriteAsync(paramData.ToArray());
 
         // Empty PARAMS
-        fastCgiStream.Write(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
+        await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
 
         // --- Step 2: Send the setup ---
-        fastCgiStream.Position = 0;
-        await fastCgiStream.CopyToAsync(stream);
-        await stream.FlushAsync();
+        await fastCgiStream.FlushAsync(); // Only flush, wrapper handles the rest. Will use the stream var below since loading POST to memory would take a lot of RAM, which would be impractical.
 
-        // --- Step 3: Stream the body ---
+        // --- Step 2: Stream the body (POST data etc) ---
         if (context.Request.Method != HttpMethods.Get &&
             context.Request.Method != HttpMethods.Head &&
             context.Request.Method != HttpMethods.Options)
@@ -130,45 +128,36 @@ public class FastCGIClient
             int bytesRead;
             while ((bytesRead = await context.Request.Body.ReadAsync(tempBuffer, 0, tempBuffer.Length)) > 0)
             {
-                // Write header for this body chunk
-                var bodyHeader = BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead);
-                await stream.WriteAsync(bodyHeader);
-
-                // Write body chunk
+                await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead));
                 await stream.WriteAsync(tempBuffer.AsMemory(0, bytesRead));
             }
         }
 
-        // --- Step 4: Final empty STDIN ---
+        // Final empty STDIN
         await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, 0));
+        await stream.FlushAsync(); // ensure all data is sent.
 
-        // --- Step 5: Flush once ---
-        await stream.FlushAsync();
-
-
-        // ---- Read response
+        // --- Step 3: Read FastCGI Response ---
         try
         {
             bool headersSent = false;
-            var stdoutBuffer = new MemoryStream();
+            using var stdoutBuffer = new MemoryStream();
 
             while (true)
             {
                 byte[] header = await ReadExactAsync(stream, 8);
                 Console.WriteLine("Received CGI header of size: " + header.Length.ToString());
-                if (header.Length < 8) break;
+                if (header.Length < 8) break; // connection closed prematurely
 
                 byte type = header[1];
-                ushort contentLength = (ushort)((header[4] << 8) + header[5]);
-                byte paddingLength = header[6];
+                ushort contentLength = (ushort)((header[4] << 8) | header[5]);
                 Console.WriteLine("Based of header[4] (" + header[4] + ") and header[5] (" + header[5] + "), contentLength = " + contentLength.ToString());
+                byte paddingLength = header[6];
+
                 byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : Array.Empty<byte>();
                 if (paddingLength > 0)
-                {
-                    Console.WriteLine("Skip padding: " + paddingLength.ToString());
                     await ReadExactAsync(stream, paddingLength); // skip padding
-                }
-                Console.WriteLine("content:\n" + Encoding.UTF8.GetString(content));
+
                 switch (type)
                 {
                     case FastCGIConstants.STDOUT:
@@ -179,9 +168,9 @@ public class FastCGIClient
                         if (!headersSent)
                         {
                             stdoutBuffer.Write(content, 0, content.Length);
-
                             var headerBytes = stdoutBuffer.ToArray();
-                            var headerEnd = FindDoubleCRLF(headerBytes);
+                            int headerEnd = FindDoubleCRLF(headerBytes);
+
                             if (headerEnd != -1)
                             {
                                 var headersPart = Encoding.UTF8.GetString(headerBytes, 0, headerEnd);
@@ -209,16 +198,13 @@ public class FastCGIClient
                                 headersSent = true;
                                 var bodyStart = headerEnd + 4;
                                 if (bodyStart < headerBytes.Length)
-                                {
                                     await context.Response.Body.WriteAsync(headerBytes, bodyStart, headerBytes.Length - bodyStart);
-                                }
                             }
                         }
                         else
                         {
                             await context.Response.Body.WriteAsync(content, 0, content.Length);
                         }
-
                         break;
 
                     case FastCGIConstants.STDERR:
@@ -227,10 +213,14 @@ public class FastCGIClient
                         break;
 
                     case FastCGIConstants.END_REQUEST:
-                        Console.WriteLine("FastCGI received: END_REQUEST");
                         return;
                 }
             }
+        }
+        catch (IOException ex)
+        {
+            // Handle the IO errors (connection resets, timeouts)
+            Console.Error.WriteLine($"FastCGI IO error occurred: {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -238,7 +228,7 @@ public class FastCGIClient
         }
         finally
         {
-            // Return the TcpClient back to the pool
+            // Return TcpClient to pool
             if (_connectionPool.Count < Program.config.PHP_MaxPoolSize && client.Connected)
             {
                 _connectionPool.Enqueue(client);
@@ -246,11 +236,12 @@ public class FastCGIClient
             }
             else
             {
-                client.Close(); // Optionally, close the connection if the pool size limit is reached
+                client.Close();
                 Console.WriteLine("TcpClient was closed..");
             }
         }
     }
+
 
     private static byte[] BuildHeader(byte type, ushort requestId, ushort contentLength)
     {
