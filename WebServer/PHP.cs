@@ -32,6 +32,11 @@ public class FastCGIClient
         _host = host;
         _port = port;
     }
+    public static bool IsUnixSocket(string address)
+    {
+        // If it starts with '/' assume it's a UNIX socket
+        return address.StartsWith("/");
+    }
     public async Task Run(HttpContext context, string path)
     {
         string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
@@ -41,6 +46,7 @@ public class FastCGIClient
         {
             { "GATEWAY_INTERFACE", "FastCGI/1.0" },
             { "REQUEST_METHOD", context.Request.Method },
+            { "REQUEST_SCHEME", context.Request.Scheme },
             { "REQUEST_URI", reqpath + context.Request.QueryString },
             { "SCRIPT_FILENAME", path },
             { "SCRIPT_NAME", reqpath },
@@ -231,6 +237,7 @@ public class FastCGIClient
                         break;
 
                     case FastCGIConstants.END_REQUEST:
+                        _ = context.Response.CompleteAsync();
                         return;
                 }
             }
@@ -257,6 +264,7 @@ public class FastCGIClient
             else
             {
                 client.Close();
+                client.Dispose();
 #if DEBUG
                 Console.WriteLine("TcpClient was closed..");
 #endif
