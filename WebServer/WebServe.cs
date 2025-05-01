@@ -448,7 +448,7 @@ namespace WebServer
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                Console.Error.WriteLine(e);
+                // Console.Error.WriteLine(e);
                 return;
             }
         }
