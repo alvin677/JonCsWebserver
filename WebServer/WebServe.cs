@@ -322,7 +322,7 @@ namespace WebServer
         
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
-            if (context.Request.ContentLength > Program.config.MaxRequestBodySize)
+            if (Program.config.MaxRequestBodySize != null && context.Request.ContentLength > Program.config.MaxRequestBodySize)
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
@@ -444,7 +444,7 @@ namespace WebServer
                 }
                 return;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
