@@ -136,12 +136,6 @@ namespace WebServer
                 SetupFileWatcher(Program.BackendDir);
             }
         }
-        private void OnStarted()
-        {
-            Console.WriteLine("WebServer started!");
-            Reload();
-            // Perform actions here, e.g., reload config or other startup tasks
-        }
 
         public void Reload()
         {
@@ -158,7 +152,7 @@ namespace WebServer
         public static void Reload2()
         {
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            httpClient.Timeout = TimeSpan.FromSeconds(300);
+            httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
 
@@ -328,6 +322,11 @@ namespace WebServer
         
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
+            if (context.Request.ContentLength > Program.config.MaxRequestBodySize)
+            {
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
             try
             {
                 if (context.WebSockets.IsWebSocketRequest)
@@ -394,8 +393,8 @@ namespace WebServer
                 };
                 if (context.Request.Method != HttpMethods.Get && context.Request.Method != HttpMethods.Head && context.Request.Method != HttpMethods.Options)
                 {
-                    context.Request.EnableBuffering();
-                    context.Request.Body.Position = 0;
+                    // context.Request.EnableBuffering();
+                    // context.Request.Body.Position = 0;
                     requestMessage.Headers.TransferEncodingChunked = true;
                     requestMessage.Content = new StreamContent(context.Request.Body);
                     if (context.Request.ContentType != null)
@@ -445,11 +444,11 @@ namespace WebServer
                 }
                 return;
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                // Console.WriteLine(e);
+                Console.Error.WriteLine(e);
                 return;
             }
         }
@@ -542,14 +541,18 @@ namespace WebServer
             if (Extensions.TryGetValue(Ext, out var Handler))
             {
                 FileLead[file] = Handler;
+                if (Handler == DefDownload) CacheFileInfo(file);
             }
             else
             {
                 //string file2 = file;
                 FileLead[file] = DefHandle;
-                FileInfo fileInfo = new FileInfo(file);
-                FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
+                CacheFileInfo(file);
             }
+        }
+        static void CacheFileInfo(string file) {
+            FileInfo fileInfo = new FileInfo(file);
+            FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
         }
         public static void IndexDirectories(string rootDirectory)
         {

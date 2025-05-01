@@ -173,8 +173,8 @@ public class FastCGIClient
             context.Request.Method != HttpMethods.Head &&
             context.Request.Method != HttpMethods.Options)
         {
-            context.Request.EnableBuffering();
-            context.Request.Body.Position = 0;
+            //context.Request.EnableBuffering();
+            //context.Request.Body.Position = 0;
 
             var tempBuffer = new byte[8192];
             int bytesRead;
@@ -410,20 +410,17 @@ public class FastCGIClient
         }
         return true;
     }
-    private static async Task<byte[]> ReadExactAsyncReturnArray(Stream stream, int length)
+    public static async ValueTask<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, int size)
     {
-        byte[] buffer = new byte[length];
-        int offset = 0;
-        while (offset < length)
+        int totalRead = 0;
+        while (totalRead < size)
         {
-            int read = await stream.ReadAsync(buffer, offset, length - offset);
+            int read = await stream.ReadAsync(buffer.Slice(totalRead, size - totalRead));
             if (read == 0)
-            {
-                throw new IOException("Connection closed before reading expected bytes.");
-            }
-            offset += read;
+                return false; // Closed early
+            totalRead += read;
         }
-        return buffer;
+        return true;
     }
 
     private int FindDoubleCRLF(Span<byte> data)

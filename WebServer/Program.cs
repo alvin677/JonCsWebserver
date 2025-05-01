@@ -194,8 +194,8 @@ public class Program
                     options.AddServerHeader = false;
                     options.Limits.MaxConcurrentConnections = config.MaxConcurrentConnections;
                     options.Limits.MaxConcurrentUpgradedConnections = config.MaxConcurrentUpgradedConnections;
-                    options.Limits.MinRequestBodyDataRate = config.MinRequestBodyDataRate; // Disable request rate limits
-                    options.Limits.MaxRequestBodySize = config.MaxRequestBodySize;    // Allow unlimited body size
+                    options.Limits.MinRequestBodyDataRate = config.MinRequestBodyDataRate;
+                    options.Limits.MaxRequestBodySize = config.MaxRequestBodySize;
                     //ThreadPool.SetMinThreads(1000, 1000);
 
                     options.ConfigureHttpsDefaults(adapterOptions =>

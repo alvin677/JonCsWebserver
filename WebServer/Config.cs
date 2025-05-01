@@ -11,6 +11,7 @@ namespace WebServer
         public long? MaxConcurrentConnections { get; set; }
         public long? MaxConcurrentUpgradedConnections { get; set; }
         public long? MaxRequestBodySize { get; set; }
+        public double HttpProxyTimeout { get; set; }
         public double bytesPerSecond { get; set; }
         public int gracePeriod { get; set; }
         public int FCGI_ReceiveTimeout { get; set; }
@@ -50,7 +51,8 @@ namespace WebServer
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;
             MaxConcurrentUpgradedConnections = 10000;
-            MaxRequestBodySize = 30000000;
+            MaxRequestBodySize = 3_000_000_000;
+            HttpProxyTimeout = 300;
             bytesPerSecond = 240;
             gracePeriod = 5;
             FCGI_ReceiveTimeout = 300000;
