@@ -176,7 +176,7 @@ namespace WebServer
                 CSScript.GlobalSettings.AddSearchDir(customLibPath);
                 CSScript.Evaluator.ReferenceAssembly("System");
             }
-            catch (Exception e) { Console.WriteLine(e.ToString()); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
+            catch (Exception e) { Console.WriteLine(e.Message); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
 
             if (Program.config.Enable_PHP)
             {

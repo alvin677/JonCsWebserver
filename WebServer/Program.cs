@@ -47,18 +47,25 @@ public class Program
         Task.Run(async () =>
         {
             string? cmd;
-            while (act && (cmd = Console.ReadLine()) != null && cmd != "")
+            while (act && (cmd = Console.ReadLine()) != null)
             {
+                if (cmd == "") {
+                    Console.WriteLine("Type 'help' for help.");
+                    continue;
+                }
                 string[] Args = cmd.Split(" ");
                 switch (Args[0])
                 {
                     case "help":
                         {
-                            Console.WriteLine("help\nlistfiles\ncountfiles\nindexfiles\nloadcerts\nclearcerts\nstats\ngc");
+                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles\nloadcerts\nclearcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
                             break;
                         }
                     case "listfiles":
                         {
+                            if(Startup.FileLead.Count < 10) {
+                                Console.WriteLine("There are " + Startup.FileLead.Count.ToString() + " files indexxed.");
+                            }
                             if (Args.Length > 1)
                             {
                                 foreach (string path in Startup.FileLead.Keys)
