@@ -60,7 +60,7 @@ public class Program
                     case "listfiles":
                         {
                             if(Startup.FileLead.Count < 10) {
-                                Console.WriteLine("There are " + Startup.FileLead.Count.ToString() + " files indexxed.");
+                                Console.WriteLine("There are " + Startup.FileLead.Count.ToString() + " files indexed.");
                             }
                             if (Args.Length > 1)
                             {
@@ -91,7 +91,7 @@ public class Program
                     case "indexfiles":
                         {
                             Startup.IndexFiles(BackendDir);
-                            Console.WriteLine("Indexxed " + BackendDir);
+                            Console.WriteLine("Indexed " + BackendDir);
                             break;
                         }
                     case "loadcerts":

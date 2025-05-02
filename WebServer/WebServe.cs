@@ -571,12 +571,13 @@ namespace WebServer
                 {
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
+                    
                     if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
                     {
-                        FileLead[Folder] = (context, path) => { path = Path.Combine(path, tmpfile).Replace(Path.DirectorySeparatorChar, '/'); context.Response.Headers["content-type"] = ctype; return Handler(context, path); }; // Handler;
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; context.Response.Headers.ContentType = ctype; return Handler(context, path); }; // Handler;
                     }else
                     {
-                        FileLead[Folder] = (context, path) => { path = Path.Combine(path, tmpfile).Replace(Path.DirectorySeparatorChar, '/'); return Handler(context, path); };
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };
                     }
                     Any = true;
                     break;
