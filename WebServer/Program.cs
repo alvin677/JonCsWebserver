@@ -49,10 +49,6 @@ public class Program
             string? cmd;
             while (act && (cmd = Console.ReadLine()) != null)
             {
-                if (cmd == "") {
-                    Console.WriteLine("Type 'help' for help.");
-                    continue;
-                }
                 string[] Args = cmd.Split(" ");
                 switch (Args[0])
                 {
@@ -144,6 +140,11 @@ public class Program
                             Console.WriteLine("Successfully shutdown. Starting now..");
                             _ = web.StartAsync();
                             web.Run();
+                            break;
+                        }
+                    default:
+                        {
+                            Console.WriteLine("Unknown command. Type 'help' for help.");
                             break;
                         }
                 }
