@@ -71,7 +71,7 @@ public class Is_CsScript
     {
         context.Response.StatusCode = 301;
         context.Response.Headers["Location"] = "https://discord.gg/RZvRp6u8yq";
-        await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
+        await context.Response.WriteAsync(context.Response.Headers["Location"]);
     }
 }
 ```
