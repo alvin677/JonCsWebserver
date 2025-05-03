@@ -26,8 +26,9 @@ Also supports proxying websockets, it automatically replaces http:// with ws:// 
 You can write C# files for backend.<br/>
 (**broken**) For direct compilation write files ending with `._cs`:
 ```cs
+using Microsoft.AspNetCore.Http;
 public class script {
- public static async System.Threading.Tasks.Task Run(Microsoft.AspNetCore.Http.HttpContext context, string path) {
+ public static async System.Threading.Tasks.Task Run(HttpContext context, string path) {
   context.Response.ContentType = "text/plain";
   await context.Response.WriteAsync($"Hello there! Path: {path}");
  }
@@ -37,8 +38,9 @@ return new script();
 (**works since version 0.76**) You can also use pre-compiled .dll C# library files, rename the extension from `.dll` to `._csdll`:
 <br>Example 1:
 ```cs
+using Microsoft.AspNetCore.Http;
 public class Is_CsScript {
-  public static async Task Run(Microsoft.AspNetCore.Http.HttpContext context, string path) {
+  public static async Task Run(HttpContext context, string path) {
     context.Response.ContentType = "text/plain";
     await context.Response.WriteAsync($"Hello there! Path: {path}");
   }
@@ -57,6 +59,19 @@ public class Is_CsScript
 // }
         context.Response.ContentType = "text/plain";
         await context.Response.WriteAsync(count.ToString());
+    }
+}
+```
+Example 3:
+```cs
+using Microsoft.AspNetCore.Http;
+public class Is_CsScript
+{
+    public static async Task Run(HttpContext context, string path)
+    {
+        context.Response.StatusCode = 301;
+        context.Response.Headers["Location"] = "https://discord.gg/RZvRp6u8yq";
+        await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
     }
 }
 ```
