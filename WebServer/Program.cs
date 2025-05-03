@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 using Microsoft.AspNetCore.ResponseCompression;
 using WebServer;
+using System.Security.Cryptography;
 
 public class Program
 {
@@ -22,6 +23,7 @@ public class Program
     public static void Main(string[] args)
     {
         config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+        config.FriendlyHeadersToOptimized();
         config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
         WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
@@ -54,7 +56,7 @@ public class Program
                 {
                     case "help":
                         {
-                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles\nloadcerts\nclearcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
+                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles\nloadcerts\nclearcerts\nlistcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
                             break;
                         }
                     case "listfiles":
@@ -104,6 +106,14 @@ public class Program
                             Certs.Clear();
                             break;
                         }
+                    case "listcerts":
+                        {
+                            Console.WriteLine("There are " + Certs.Count.ToString() + " certificates in cache.");
+                            foreach (string certDom in Certs.Keys) {
+                                Console.WriteLine(certDom);
+                            }
+                            break;
+                        }
                     case "stats":
                     case "statistics":
                     case "status":
@@ -122,6 +132,7 @@ public class Program
                     case "reload":
                         {
                             config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+                            config.FriendlyHeadersToOptimized();
                             config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
                             _ = Task.Run(()=>Startup.Reload2());
                             Console.WriteLine("Reloaded!");
@@ -296,6 +307,16 @@ public class Program
                     );
                     Certs[domain] = cert;
                     if (!Certs.ContainsKey("fallback")) Certs["fallback"] = Certs[domain];
+
+                    List<string> domains = GetDomainsFromCertificate(cert);
+                    foreach (string d in domains)
+                    {
+                        if (!Certs.TryGetValue(d, out X509Certificate2? value) || value.NotAfter < cert.NotAfter)
+                        {
+                            value = cert;
+                            Certs[d] = value;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -308,6 +329,27 @@ public class Program
             Console.WriteLine(ex);
         }
         Console.ResetColor();
+    }
+    private static List<string> GetDomainsFromCertificate(X509Certificate2 cert)
+    {
+        var domains = new List<string>();
+
+        foreach (var ext in cert.Extensions)
+        {
+            if (ext.Oid?.Value == "2.5.29.17") // Subject Alternative Name
+            {
+                AsnEncodedData asnData = new AsnEncodedData(ext.Oid, ext.RawData);
+                string sanString = asnData.Format(false);
+                string[] parts = sanString.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var part in parts)
+                {
+                    if (part.StartsWith("DNS Name="))
+                        domains.Add(part.Substring(9));
+                }
+            }
+        }
+
+        return domains;
     }
 
     private static X509Certificate2 GetCertificateForHost(string host)

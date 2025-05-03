@@ -16,6 +16,9 @@ using CSScriptLib;
 using System.Buffers;
 using System.Security.Authentication;
 using CSScripting;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Primitives;
 
 namespace WebServer
 {
@@ -114,9 +117,12 @@ namespace WebServer
                      {
                          string[] getExt = FileToUse.Split('.');
                          string Ext = getExt[getExt.Length - 1];
-                         if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
+                         if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                          {
-                             context.Response.Headers["content-type"] = ctype;
+                             for (int i = 0; i < ctype.Length; i += 2)
+                             {
+                                 context.Response.Headers[ctype[i]] = ctype[i + 1];
+                             }
                          }
                          await _Handler(context, FileToUse);
                          return;
@@ -319,7 +325,10 @@ namespace WebServer
         private static HttpClientHandler handler = new HttpClientHandler();
         private static readonly HttpClient httpClient = new HttpClient(handler);
         private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
-        
+        private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
+        {
+            return true;
+        }
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (Program.config.MaxRequestBodySize != null && context.Request.ContentLength > Program.config.MaxRequestBodySize)
@@ -338,7 +347,7 @@ namespace WebServer
                     //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
                     SocketsHttpHandler websockethandler = new SocketsHttpHandler
                     {
-                        SslOptions = { EnabledSslProtocols = SslProtocols.Tls12 },
+                        SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
                     client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
@@ -421,8 +430,16 @@ namespace WebServer
                 requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
                 requestMessage.Headers.TryAddWithoutValidation(":method", context.Request.Method);
                 requestMessage.Headers.TryAddWithoutValidation(":scheme", context.Request.Scheme);
-                requestMessage.Headers.TryAddWithoutValidation("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
-                requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", context.Connection.RemoteIpAddress?.ToString());
+                string? UserIp = context.Connection.RemoteIpAddress?.ToString();
+                if (context.Request.Headers.TryGetValue("X-Forwarded-For", out StringValues val))
+                {
+                    requestMessage.Headers.TryAddWithoutValidation("X-Forwarded-For", val + "," + UserIp);
+                }
+                else
+                {
+                    requestMessage.Headers.TryAddWithoutValidation("X-Forwarded-For", UserIp);
+                }
+                requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", UserIp);
 
                 using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead))
                 {
@@ -572,9 +589,9 @@ namespace WebServer
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
                     
-                    if (Program.config.ExtTypes.TryGetValue(Ext, out string? ctype))
+                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                     {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; context.Response.Headers.ContentType = ctype; return Handler(context, path); }; // Handler;
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
                     }else
                     {
                         FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };

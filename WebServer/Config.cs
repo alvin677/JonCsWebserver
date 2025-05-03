@@ -35,7 +35,11 @@ namespace WebServer
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
-        public Dictionary<string, string> ExtTypes { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string[]> ExtTypes { get; private set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        [JsonIgnore]
+        public Dictionary<string, string[]> OptExtTypes { get; set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> DomainAlias { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -44,6 +48,28 @@ namespace WebServer
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
 
+        public void FriendlyHeadersToOptimized()
+        {
+            foreach (var kvp in ExtTypes)
+            {
+                string[] list = kvp.Value;
+                List<string> parsed = new List<string>(list.Length * 2);
+
+                foreach (var header in list)
+                {
+                    int sep = header.IndexOf(':');
+                    if (sep == -1)
+                    {
+                        Console.WriteLine("[Config] Malformed header entry in '" + kvp.Key + "': \"" + header + "\" (missing ':' between header key and header value).");
+                        continue;
+                    }
+                    parsed.Add(header[..sep].Trim());
+                    parsed.Add(header[(sep + 1)..].Trim());
+                }
+
+                OptExtTypes[kvp.Key] = parsed.ToArray();
+            }
+        }
         public void LoadDefaults()
         {
             Enable_PHP = false;
@@ -76,43 +102,43 @@ namespace WebServer
             indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
-            "zip",
+            "zip", "tar", "gz",
             "jar",
             "dll",
             "exe"
             ];
-            ExtTypes = new Dictionary<string, string>()
+            ExtTypes = new Dictionary<string, string[]>() // "Content-Type", "text/html" so we don't have to split string or anything during runtime, can just do a for loop using i+=2
             {
-                ["html"] = "text/html",
-                ["php"] = "text/html",
-                ["txt"] = "text/plain",
-                ["log"] = "text/plain",
-                ["css"] = "text/css",
-                ["jpg"] = "image/jpeg",
-                ["svg"] = "image/svg+xml",
-                ["mp3"] = "audio/mpeg",
+                ["html"] = ["Content-Type: text/html", "Cache-Control: max-age=86400"], 
+                ["php"] = ["Content-Type: text/html"],
+                ["txt"] = ["Content-Type: text/plain"],
+                ["log"] = ["Content-Type: text/plain"],
+                ["css"] = ["Content-Type: text/css"],
+                ["jpg"] = ["Content-Type: image/jpeg"],
+                ["svg"] = ["Content-Type: image/svg+xml"],
+                ["mp3"] = ["Content-Type: audio/mpeg"],
             };
             ForwardExt = new Dictionary<string, string>()
             {
                 ["njs"] = "http://{domain}:3000",
                 ["bun"] = "http://{domain}:3000"
             };
-            ExtTypes["js"] = "application/javascript";
+            ExtTypes["js"] = ["Content-Type: application/javascript"];
             foreach (string g in new string[] { "json", "pdf", "zip", "jar", "dll", "exe" })
             {
-                ExtTypes[g] = "application/" + g;
+                ExtTypes[g] = ["Content-Type: application/" + g];
             }
             foreach (string g in new string[] { "png", "jpeg", "gif", "webp", "ico" })
             {
-                ExtTypes[g] = "image/" + g;
+                ExtTypes[g] = ["Content-Type: image/" + g];
             }
             foreach (string g in new string[] { "wav", "ogg" })
             {
-                ExtTypes[g] = "audio/" + g;
+                ExtTypes[g] = ["Content-Type: audio/" + g];
             }
             foreach (string g in new string[] { "mp4", "flv", "mkv", "wmf", "avi", "webm" })
             {
-                ExtTypes[g] = "video/" + g;
+                ExtTypes[g] = ["Content-Type: video/" + g];
             }
             DefaultHeaders["Server"] = "JH";
             DefaultHeaders["vary"] = "Accept-Encoding";
