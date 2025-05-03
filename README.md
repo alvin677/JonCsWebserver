@@ -75,6 +75,17 @@ public class Is_CsScript
     }
 }
 ```
+(WhatsMyIp) Example 4:
+```cs
+using Microsoft.AspNetCore.Http;
+public class Is_CsScript
+{
+    public static async Task Run(HttpContext context, string path)
+    {
+        await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
+    }
+}
+```
 
 ## PHP backend (Enable_PHP: true)
 PHP is a very popular backend language.  
