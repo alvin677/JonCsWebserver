@@ -105,7 +105,7 @@ namespace WebServer
             "zip", "tar", "gz",
             "jar",
             "dll",
-            "exe", "bat", "bash", "sh"
+            "exe", "bat", "bash", "sh", "x86_64"
             ];
             ExtTypes = new Dictionary<string, string[]>() // "Content-Type", "text/html" so we don't have to split string or anything during runtime, can just do a for loop using i+=2
             {
