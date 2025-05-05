@@ -690,9 +690,9 @@ namespace WebServer
             if ((Program.config.Enable_CS && filePath.EndsWith("._csdll")) || (Program.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
             FileIndex.TryRemove(filePath, out _);
             FileLead.TryRemove(filePath, out _);
-            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? cxt))
+            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
             {
-                cxt?.Unload();
+                ctx?.Unload();
                 LiveAssemblies.Remove(filePath);
             }
         }
@@ -729,9 +729,9 @@ namespace WebServer
 
         public static void LoadCompiledFunc(string file)
         {
-            if (LiveAssemblies.TryGetValue(file[..^3], out HotReloadContext? cxt))
+            if (LiveAssemblies.TryGetValue(file[..^3], out HotReloadContext? ctx))
             {
-                cxt?.Unload();
+                ctx?.Unload();
                 LiveAssemblies.Remove(file[..^3]);
             }
             HotReloadContext context = new HotReloadContext();
