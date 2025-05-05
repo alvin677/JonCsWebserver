@@ -735,7 +735,7 @@ namespace WebServer
                 LiveAssemblies.Remove(file[..^3]);
             }
             HotReloadContext context = new HotReloadContext();
-            Assembly assembly = context.LoadFromAssemblyPath(file);
+            Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(file));
             Type? type = assembly.GetType("Is_CsScript");
             if (type == null)
             {
