@@ -298,14 +298,7 @@ namespace WebServer
             }
             if (context.Request.Method == HttpMethods.Options) return;
 
-            try
-            {
-                await context.Response.SendFileAsync(file);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
+            await context.Response.SendFileAsync(file);
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
