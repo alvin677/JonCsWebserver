@@ -30,6 +30,7 @@ namespace WebServer
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
@@ -297,7 +298,14 @@ namespace WebServer
             }
             if (context.Request.Method == HttpMethods.Options) return;
 
-            await context.Response.SendFileAsync(file);
+            try
+            {
+                await context.Response.SendFileAsync(file);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
@@ -568,8 +576,52 @@ namespace WebServer
             }
         }
         static void CacheFileInfo(string file) {
+            try
+            {
+                FileInfo fileInfo = ThruSymlinks(file);
+                if(fileInfo != null) FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
+            }catch(Exception){
+                FileLead.Remove(file, out _); // no func = error 404
+            } // non-existing files throw err
+        }
+        static FileInfo ThruSymlinks(string file)
+        {
+            HashSet<string> Symlinks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             FileInfo fileInfo = new FileInfo(file);
-            FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
+            if(fileInfo.LinkTarget == null)
+            {
+                if(reverseSymlinkMap.TryGetValue(file, out HashSet<string>? Linked))
+                {
+                    foreach(string symlink in Linked)
+                    {
+                        string target = symlink;
+                        if (target.StartsWith(Program.BackendDir))
+                        {
+                            target = target.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+                        }
+                        CacheFileInfo(target);
+                    }
+                }
+                return fileInfo;
+            }
+            while(fileInfo.LinkTarget != null)
+            {
+                string target = fileInfo.LinkTarget;
+                if (!Path.IsPathRooted(target))
+                {
+                    target = Path.Combine(fileInfo.DirectoryName ?? "", target); // Resolve relative to the symlink's directory
+                }
+                target = Path.GetFullPath(target).Replace(Path.DirectorySeparatorChar, '/');
+                if(Symlinks.Contains(target))
+                {
+                    Console.WriteLine("[WARN] Infinite symlink loop detected for file: " + file);
+                    break;
+                }
+                Symlinks.Add(target);
+                fileInfo = new FileInfo(target);
+            }
+            reverseSymlinkMap[file] = Symlinks;
+            return fileInfo;
         }
         public static void IndexDirectories(string rootDirectory)
         {
