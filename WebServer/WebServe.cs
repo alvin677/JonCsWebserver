@@ -31,6 +31,7 @@ namespace WebServer
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
@@ -581,23 +582,23 @@ namespace WebServer
         {
             HashSet<string> Symlinks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             FileInfo fileInfo = new FileInfo(file);
-            if(fileInfo.LinkTarget == null)
+            if(fileInfo.LinkTarget == null) // is real file
             {
                 if(reverseSymlinkMap.TryGetValue(file, out HashSet<string>? Linked))
                 {
-                    foreach(string symlink in Linked)
+                    foreach(string symlink in Linked) // Update all files linking to this file
                     {
                         string target = symlink;
                         if (target.StartsWith(Program.BackendDir))
                         {
                             target = target.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
                         }
-                        CacheFileInfo(target);
+                        CacheFileInfo(target); // Update metadata for the symlink
                     }
                 }
                 return fileInfo;
             }
-            while(fileInfo.LinkTarget != null)
+            while(fileInfo.LinkTarget != null) // find real file
             {
                 string target = fileInfo.LinkTarget;
                 if (!Path.IsPathRooted(target))
@@ -613,7 +614,12 @@ namespace WebServer
                 Symlinks.Add(target);
                 fileInfo = new FileInfo(target);
             }
-            reverseSymlinkMap[file] = Symlinks;
+            string realFile = fileInfo.FullName.Replace(Path.DirectorySeparatorChar, '/');
+            if (realFile.StartsWith(Program.BackendDir))
+            {
+                realFile = realFile.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+            }
+            reverseSymlinkMap[realFile] = Symlinks;
             return fileInfo;
         }
         public static void IndexDirectories(string rootDirectory)
@@ -681,10 +687,14 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-
             if ((Program.config.Enable_CS && filePath.EndsWith("._csdll")) || (Program.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
             FileIndex.TryRemove(filePath, out _);
             FileLead.TryRemove(filePath, out _);
+            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? cxt))
+            {
+                cxt?.Unload();
+                LiveAssemblies.Remove(filePath);
+            }
         }
 
         public static void CompileAndAddFunction(string filePath)
@@ -719,24 +729,33 @@ namespace WebServer
 
         public static void LoadCompiledFunc(string file)
         {
-            Assembly assembly = Assembly.Load(File.ReadAllBytes(file));
+            if (LiveAssemblies.TryGetValue(file[..^3], out HotReloadContext? cxt))
+            {
+                cxt?.Unload();
+                LiveAssemblies.Remove(file[..^3]);
+            }
+            HotReloadContext context = new HotReloadContext();
+            Assembly assembly = context.LoadFromAssemblyPath(file);
             Type? type = assembly.GetType("Is_CsScript");
             if (type == null)
             {
-                Console.WriteLine("Make sure to use the namespace/class Is_CsScript for ._csdll!");
+                Console.WriteLine("Make sure to use the namespace/class Is_CsScript for ._csdll! File: " + file);
+                context.Unload();
                 return;
             }
             MethodInfo? method = type.GetMethod("Run");
             if (method == null)
             {
-                Console.WriteLine("Make a function called Run(HttpContext context, string path)");
+                Console.WriteLine("Add a function to " + file + ": public class Is_CsScript{ public static async Task Run(HttpContext context, string path) {} }");
+                context.Unload();
                 return;
             }
             Func<HttpContext, string, Task> func = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[file[..^3]] = func;
+            FileLead[file[..^3]] = func; // ._csdll -> ._cs
+            LiveAssemblies[file[..^3]] = context;
         }
 
         public static void LoadPhpAssembly(string filePath)
