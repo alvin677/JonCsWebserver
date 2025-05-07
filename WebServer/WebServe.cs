@@ -324,7 +324,9 @@ namespace WebServer
             /*if (context.Request.Method == HttpMethods.Options) return;
             await context.Response.SendFileAsync(file);*/
         }
-        private static HttpClientHandler handler = new HttpClientHandler();
+        private static HttpClientHandler handler = new HttpClientHandler {
+            UseCookies = false
+        };
         private static readonly HttpClient httpClient = new HttpClient(handler);
         private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
         private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
