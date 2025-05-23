@@ -163,6 +163,11 @@ namespace WebServer
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
+            if (!Program.config.ForceTLS)
+            {
+                handler.ServerCertificateCustomValidationCallback = IgnoreCert;
+            }
+            else handler.ServerCertificateCustomValidationCallback = null;
 
             string customLibPath = Path.Combine(AppContext.BaseDirectory, "deps");
             try

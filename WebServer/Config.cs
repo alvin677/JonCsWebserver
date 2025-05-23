@@ -7,6 +7,7 @@ namespace WebServer
     {
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
+        public bool ForceTLS { get; set; }
         public bool BufferFastCGIResponse { get; set; }
         public long? MaxConcurrentConnections { get; set; }
         public long? MaxConcurrentUpgradedConnections { get; set; }
@@ -74,6 +75,7 @@ namespace WebServer
         {
             Enable_PHP = false;
             Enable_CS = true;
+            ForceTLS = false;
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;
             MaxConcurrentUpgradedConnections = 10000;
