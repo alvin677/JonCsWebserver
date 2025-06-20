@@ -318,7 +318,8 @@ public class FastCGIClient
     private static async Task SendRecord(Stream stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
     {
         ushort contentLength = (ushort)content.Length;
-        (var header, var paddingLength) = BuildHeader(type, requestId, contentLength);
+        byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
+        byte[] header = BuildHeader(type, requestId, contentLength, paddingLength);
 
         await stream.WriteAsync(header);
         if (contentLength > 0)
@@ -329,7 +330,8 @@ public class FastCGIClient
     private static async Task SendRecord(IStreamWriter stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
     {
         ushort contentLength = (ushort)content.Length;
-        (var header, var paddingLength) = BuildHeader(type, requestId, contentLength);
+        byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
+        var header = BuildHeader(type, requestId, contentLength, paddingLength);
 
         await stream.WriteAsync(header);
         if (contentLength > 0)
@@ -338,10 +340,9 @@ public class FastCGIClient
             await stream.WriteAsync(new byte[paddingLength]);
     }
     
-    private static (byte[] header, byte paddingLength) BuildHeader(byte type, ushort requestId, ushort contentLength)
+    private static byte[] BuildHeader(byte type, ushort requestId, ushort contentLength, byte paddingLength)
     {
-        byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
-        return (new byte[]
+        return new byte[]
         {
             FastCGIConstants.VERSION,
             type,
@@ -351,7 +352,7 @@ public class FastCGIClient
             (byte)(contentLength & 0xFF),
             paddingLength,
             0x00 // reserved
-        }, paddingLength);
+        };
     }
 
     private static IEnumerable<byte> EncodeNameValuePair(string name, string value)
