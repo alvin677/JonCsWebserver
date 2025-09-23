@@ -246,7 +246,7 @@ namespace WebServer
             }
         }
 
-        private static async Task DefHandle(HttpContext context, string file)
+        public static async Task DefHandle(HttpContext context, string file)
         {
             if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
