@@ -576,7 +576,7 @@ namespace WebServer
                 CacheFileInfo(file);
             }
         }
-        static void CacheFileInfo(string file) {
+        public static void CacheFileInfo(string file) {
             try
             {
                 FileInfo fileInfo = ThruSymlinks(file);
