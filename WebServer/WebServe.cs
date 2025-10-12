@@ -19,6 +19,7 @@ using CSScripting;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Primitives;
+using System.Reflection.PortableExecutable;
 
 namespace WebServer
 {
@@ -434,6 +435,10 @@ namespace WebServer
                 foreach (var header in context.Request.Headers)
                 {
                     requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+                }
+                if (!requestMessage.Headers.Contains("cookie")) // patch edge-case from reusing Httpclient
+                {
+                    requestMessage.Headers.TryAddWithoutValidation("cookie", "");
                 }
                 requestMessage.Headers.TryAddWithoutValidation(":authority", requestMessage.RequestUri.Host.Split(":")[0]);
                 requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
