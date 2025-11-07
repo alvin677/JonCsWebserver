@@ -475,11 +475,11 @@ namespace WebServer
                 }
                 return;
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 context.Response.StatusCode = 500;
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                // Console.Error.WriteLine(e);
+                _ = Console.Error.WriteLineAsync(e.Message);
                 return;
             }
         }

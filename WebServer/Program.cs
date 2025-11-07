@@ -51,7 +51,7 @@ public class Program
             string? cmd;
             while (act && (cmd = Console.ReadLine()) != null)
             {
-                string[] Args = cmd.Split(" ");
+                string[] Args = cmd.Split(' ');
                 switch (Args[0])
                 {
                     case "help":
@@ -92,8 +92,9 @@ public class Program
                         }
                     case "indexfiles":
                         {
-                            Startup.IndexFiles(BackendDir);
-                            Console.WriteLine("Indexed " + BackendDir);
+                            string indx = BackendDir + String.Join(' ', Args.Skip(1));
+                            Startup.IndexFiles(indx);
+                            Console.WriteLine("Indexed " + indx);
                             break;
                         }
                     case "loadcerts":
