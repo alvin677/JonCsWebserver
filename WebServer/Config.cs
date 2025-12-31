@@ -105,7 +105,7 @@ namespace WebServer
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
             "zip", "tar", "gz",
-            "jar",
+            "jar", "apk",
             "dll",
             "exe", "bat", "bash", "sh", "x86_64"
             ];
@@ -119,6 +119,7 @@ namespace WebServer
                 ["jpg"] = ["Content-Type: image/jpeg"],
                 ["svg"] = ["Content-Type: image/svg+xml"],
                 ["mp3"] = ["Content-Type: audio/mpeg"],
+                ["apk"] = ["Content-Type: application/vnd.android.package-archive"],
             };
             ForwardExt = new Dictionary<string, string>()
             {
@@ -182,4 +183,5 @@ namespace WebServer
             await File.WriteAllTextAsync(filePath, json);
         }
     }
+
 }
