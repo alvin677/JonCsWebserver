@@ -93,7 +93,7 @@ public class Program
                     case "indexfiles":
                         {
                             string indx = BackendDir + String.Join(' ', Args.Skip(1));
-                            Startup.IndexFiles(indx);
+                            _ = Task.Run(()=>Startup.IndexFiles(indx)); // prevent stalling + prevent crashing from invalid path
                             Console.WriteLine("Indexed " + indx);
                             break;
                         }
@@ -162,7 +162,7 @@ public class Program
                 }
             }
         });
-        Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed. :)");
+        Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed.");
         web.Run();
         Console.WriteLine("Press enter to exit..");
         Console.ReadLine();

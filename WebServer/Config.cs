@@ -104,7 +104,7 @@ namespace WebServer
             indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
-            "zip", "tar", "gz",
+            "zip", "tar", "gz", "rar",
             "jar", "apk",
             "dll",
             "exe", "bat", "bash", "sh", "x86_64"
@@ -183,5 +183,4 @@ namespace WebServer
             await File.WriteAllTextAsync(filePath, json);
         }
     }
-
 }
