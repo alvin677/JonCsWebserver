@@ -249,10 +249,14 @@ namespace WebServer
 
         public static async Task DefHandle(HttpContext context, string file)
         {
+            if (context.Request.Method == HttpMethods.Options)
+            {
+                context.Response.StatusCode = StatusCodes.Status204NoContent;
+                return;
+            }
             if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
                 context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
-                context.Response.ContentLength = LastMod[1];
                 if (long.TryParse(context.Request.Headers.IfModifiedSince, out long LM))
                 {
                     if (LastMod[0] <= LM)
@@ -261,8 +265,7 @@ namespace WebServer
                         return;
                     }
                 }
-                if (context.Request.Method == HttpMethods.Options) return;
-
+                context.Response.ContentLength = LastMod[1];
                 //long end = (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
                 if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
                 {
@@ -288,6 +291,7 @@ namespace WebServer
                             {
                                 context.Response.Headers.Remove("Content-Length");
                                 context.Response.Headers["Transfer-Encoding"] = "chunked";
+                                if (context.Request.Method == HttpMethods.Head) return;
                                 // Use Chunked Transfer Encoding
                                 await StreamFileChunked(context, file, start, contentLength);
                             }
@@ -295,7 +299,7 @@ namespace WebServer
                             {
                                 context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
                                 context.Response.ContentLength = contentLength;
-
+                                if (context.Request.Method == HttpMethods.Head) return;
                                 await StreamFileUsingBodyWriter(context, file, start, contentLength);
                             }
                             return;
@@ -303,7 +307,7 @@ namespace WebServer
                     }
                 }
             }
-            if (context.Request.Method == HttpMethods.Options) return;
+            if (context.Request.Method == HttpMethods.Head) return;
 
             await context.Response.SendFileAsync(file);
         }
@@ -478,6 +482,7 @@ namespace WebServer
             catch (Exception e)
             {
                 context.Response.StatusCode = 500;
+                context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
                 _ = Console.Error.WriteLineAsync(e.Message);
                 return;
