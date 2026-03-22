@@ -160,6 +160,7 @@ namespace WebServer
         }
         public static void Reload2()
         {
+            defaultHeadersDict.Clear();
             foreach (var kvp in Program.config.DefaultHeaders) defaultHeadersDict[kvp.Key] = new StringValues(kvp.Value);
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
