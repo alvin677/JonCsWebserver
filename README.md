@@ -67,6 +67,19 @@ Example 3:
 using Microsoft.AspNetCore.Http;
 public class Is_CsScript
 {
+    const string newurl = "https://tmspk.gg/phMyXgKV";
+    public static Task Run(HttpContext context, string path)
+    {
+        context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
+        context.Response.Headers.Location = newurl;
+        return Task.CompletedTask;
+    }
+}
+```
+```cs
+using Microsoft.AspNetCore.Http;
+public class Is_CsScript
+{
     public static async Task Run(HttpContext context, string path)
     {
         context.Response.StatusCode = 301;
