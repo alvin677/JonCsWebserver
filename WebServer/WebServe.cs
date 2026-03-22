@@ -1,25 +1,26 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using CSScripting;
+using CSScriptLib;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Primitives;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
-using System.Net.Http.Headers;
-using System.Net;
-using Microsoft.AspNetCore.WebSockets;
-using CSScriptLib;
-using System.Buffers;
-using System.Security.Authentication;
-using CSScripting;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.Primitives;
 using System.Reflection.PortableExecutable;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace WebServer
 {
@@ -33,6 +34,7 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
+        public static HeaderDictionary defaultHeadersDict = new HeaderDictionary();
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
@@ -104,10 +106,11 @@ namespace WebServer
                          context.Response.StatusCode = 414;
                          return;
                      }
-                     foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
+                     context.Response.Headers.AddItems(defaultHeadersDict); // Fast defaultHeaders
+                     /* Manual: foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
                      {
                          context.Response.Headers[header.Key] = header.Value;
-                     }
+                     }*/
                      string FileToUse = string.Join("/", path);
                      if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1][path[path.Count - 1].Length - 1] != '/')) // linking directly to a file or a directory
                      {
@@ -120,12 +123,9 @@ namespace WebServer
                      {
                          string[] getExt = FileToUse.Split('.');
                          string Ext = getExt[getExt.Length - 1];
-                         if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                         if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
                          {
-                             for (int i = 0; i < ctype.Length; i += 2)
-                             {
-                                 context.Response.Headers[ctype[i]] = ctype[i + 1];
-                             }
+                             context.Response.Headers.AddItems(headers);
                          }
                          await _Handler(context, FileToUse);
                          return;
@@ -160,6 +160,7 @@ namespace WebServer
         }
         public static void Reload2()
         {
+            foreach (var kvp in Program.config.DefaultHeaders) defaultHeadersDict[kvp.Key] = new StringValues(kvp.Value);
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -207,6 +208,51 @@ namespace WebServer
 
             return fullPath;
         }
+        public static void GetDomainBasedPath(HttpContext context, Span<string> buffer, out int length)
+        {
+            length = 0;
+
+            // BackendDir
+            buffer[length++] = Program.BackendDir;
+
+            // Host processing
+            string host = context.Request.Host.Value;
+            int colonIndex = host.IndexOf(':');
+            if (colonIndex != -1) host = host[..colonIndex];
+
+            if (!string.IsNullOrEmpty(Program.config.FilterFromDomain))
+                host = host.Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
+
+            buffer[length++] = host;
+
+            // Request path
+            ReadOnlySpan<char> path = context.Request.Path.Value.AsSpan().Trim('/');
+            int start = 0;
+            while (start < path.Length)
+            {
+                int sep = path.Slice(start).IndexOf('/');
+                if (sep == -1) sep = path.Length - start;
+
+                ReadOnlySpan<char> part = path.Slice(start, sep);
+                if (!part.SequenceEqual("..".AsSpan())) // prevent directory traversal
+                    buffer[length++] = part.ToString(); // unavoidable allocation here if you store strings
+
+                start += sep + 1;
+            }
+        }
+        public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
+        {
+            ulong hash = 14695981039346656037UL; // FNV-1a offset basis
+
+            foreach (char c in host)
+                hash = (hash ^ c) * 1099511628211UL;
+
+            foreach (char c in path)
+                hash = (hash ^ c) * 1099511628211UL;
+
+            return hash;
+        }
+
         private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
         {
             const int bufferSize = 8192; // 8KB chunks
@@ -657,9 +703,9 @@ namespace WebServer
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
                     
-                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                    if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
                     {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; context.Response.Headers.AddItems(headers); return Handler(context, path); };
                     }else
                     {
                         FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };

@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
+using System.Reflection.PortableExecutable;
 
 namespace WebServer
 {
@@ -39,7 +41,7 @@ namespace WebServer
         public Dictionary<string, string[]> ExtTypes { get; private set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
         [JsonIgnore]
-        public Dictionary<string, string[]> OptExtTypes { get; set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, HeaderDictionary> OptExtTypes { get; set; } = new Dictionary<string, HeaderDictionary>(StringComparer.OrdinalIgnoreCase);
 
         public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -53,22 +55,20 @@ namespace WebServer
         {
             foreach (var kvp in ExtTypes)
             {
-                string[] list = kvp.Value;
-                List<string> parsed = new List<string>(list.Length * 2);
-
-                foreach (var header in list)
+                HeaderDictionary headers = new HeaderDictionary();
+                foreach (var entry in kvp.Value)
                 {
-                    int sep = header.IndexOf(':');
+                    int sep = entry.IndexOf(':');
                     if (sep == -1)
                     {
-                        Console.WriteLine("[Config] Malformed header entry in '" + kvp.Key + "': \"" + header + "\" (missing ':' between header key and header value).");
+                        Console.WriteLine("[Config] Malformed header entry in '" + kvp.Key + "': \"" + entry + "\" (missing ':' between header key and header value).");
                         continue;
                     }
-                    parsed.Add(header[..sep].Trim());
-                    parsed.Add(header[(sep + 1)..].Trim());
+                    string key = entry[..sep].Trim();
+                    string val = entry[(sep + 1)..].Trim();
+                    headers[key] = val;
                 }
-
-                OptExtTypes[kvp.Key] = parsed.ToArray();
+                OptExtTypes[kvp.Key] = headers; // store per-extension HeaderDictionary
             }
         }
         public void LoadDefaults()
