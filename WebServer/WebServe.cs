@@ -680,16 +680,35 @@ namespace WebServer
             };
             watcher.Filter = "*";
 
-            watcher.Created += (sender, e) => UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
-            watcher.Changed += (sender, e) => UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Created += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Changed += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             watcher.Renamed += (sender, e) =>
             {
                 RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
-                UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+                OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             };
 
             watcher.EnableRaisingEvents = true;
+        }
+
+        private static readonly ConcurrentDictionary<string, long> _pending = new();
+        private static readonly long debounceTicks = TimeSpan.FromMilliseconds(50).Ticks;
+        void OnFileEvent(string path)
+        {
+            long now = Stopwatch.GetTimestamp();
+            _pending[path] = now;
+
+            ThreadPool.QueueUserWorkItem(__ =>
+            {
+                Thread.Sleep(50);
+                if (_pending.TryGetValue(path, out var last) &&
+                    Stopwatch.GetTimestamp() - last >= debounceTicks)
+                {
+                    _pending.TryRemove(path, out _);
+                    UpdateIndex(path); // or LoadCompiledFunc for _csdll
+                }
+            });
         }
 
         static void UpdateIndex(string filePath)
