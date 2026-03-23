@@ -34,11 +34,15 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        public static HeaderDictionary defaultHeadersDict = new HeaderDictionary();
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
+
+        static int defaultHeaderCount = 0;
+        static string[] defaultHeaderKeys = new string[0];
+        static string[] defaultHeaderValues = new string[0];
+
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddRouting();
@@ -107,9 +111,13 @@ namespace WebServer
                      string[] pathBuffer = ArrayPool<string>.Shared.Rent(Program.config.MaxDirDepth + 2);
                      try
                      {
+                         Array.Clear(pathBuffer, 0, pathBuffer.Length); // prevent leftover strings
                          GetDomainBasedPath(context, pathBuffer, out int pathLen); // fills buffer, sets actual length. Limited by Program.config.MaxDirDepth, no need for extra checks.
 
-                         context.Response.Headers.AddItems(defaultHeadersDict); // Fast defaultHeaders
+                         for (int i = 0; i < defaultHeaderCount; i++)
+                         {
+                             context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i];
+                         }
 
                          Span<char> filePathBuffer = stackalloc char[Program.config.MaxFilePathLength];
                          int pos = 0;
@@ -119,13 +127,14 @@ namespace WebServer
                          {
                              string segment = pathBuffer[i];
 
-                             // Copy segment
+                             if (segment == null) continue; // defensive
                              if (pos + segment.Length >= Program.config.MaxFilePathLength)
                              {
                                  context.Response.StatusCode = 414;
+                                 // Console.WriteLine("pos: " + pos + " | segment: " + segment.Length.ToString() + " | max: " + Program.config.MaxFilePathLength.ToString());
                                  return; // cancel if too long
                              }
-
+                             // Copy segment
                              segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
                              pos += segment.Length;
 
@@ -165,9 +174,12 @@ namespace WebServer
                          {
                              int dotIndex = FileToUse.LastIndexOf('.');
                              string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
-                             if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
+                             if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                              {
-                                 context.Response.Headers.AddItems(headers);
+                                 for (int i = 0; i < ctype.Length; i += 2)
+                                 {
+                                     context.Response.Headers[ctype[i]] = ctype[i + 1];
+                                 }
                              }
                              await _Handler(context, FileToUse);
                              return;
@@ -207,8 +219,17 @@ namespace WebServer
         }
         public static void Reload2()
         {
-            defaultHeadersDict.Clear();
-            foreach (var kvp in Program.config.DefaultHeaders) defaultHeadersDict[kvp.Key] = new StringValues(kvp.Value);
+            defaultHeaderKeys = new string[Program.config.DefaultHeaders.Count];
+            defaultHeaderValues = new string[Program.config.DefaultHeaders.Count];
+            int idx = 0;
+            foreach (var kv in Program.config.DefaultHeaders)
+            {
+                defaultHeaderKeys[idx] = kv.Key;
+                defaultHeaderValues[idx] = kv.Value;
+                idx++;
+            }
+            defaultHeaderCount = defaultHeaderKeys.Length;
+
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -752,9 +773,9 @@ namespace WebServer
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
                     
-                    if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
+                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                     {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; context.Response.Headers.AddItems(headers); return Handler(context, path); };
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
                     }else
                     {
                         FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };
