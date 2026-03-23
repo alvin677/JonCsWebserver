@@ -17,6 +17,7 @@ namespace WebServer
         public double HttpProxyTimeout { get; set; }
         public double bytesPerSecond { get; set; }
         public int gracePeriod { get; set; }
+        public int MaxFilePathLength { get; set; }
         public int FCGI_ReceiveTimeout { get; set; }
         public int FCGI_SendTimeout { get; set; }
         public uint ClearSessEveryXMin { get; set; }
@@ -38,6 +39,8 @@ namespace WebServer
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
+        [JsonIgnore]
+        public Dictionary<ulong, string> UrlAliasHash { get; private set; } = new Dictionary<ulong, string>();
         public Dictionary<string, string[]> ExtTypes { get; private set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
         [JsonIgnore]
@@ -70,6 +73,29 @@ namespace WebServer
                 }
                 OptExtTypes[kvp.Key] = headers; // store per-extension HeaderDictionary
             }
+            UrlAliasHash = BuildUrlAliasHashes(UrlAlias);
+        }
+        public static Dictionary<ulong, string> BuildUrlAliasHashes(Dictionary<string, string> urlAlias)
+        {
+            var result = new Dictionary<ulong, string>(urlAlias.Count);
+
+            foreach (var kvp in urlAlias)
+            {
+                string key = kvp.Key;
+
+                // Split host + path
+                int slashIndex = key.IndexOf('/');
+                string host = slashIndex == -1 ? key : key[..slashIndex];
+                string path = slashIndex == -1 ? "" : key[slashIndex..]; // keep leading /
+
+                // Compute hash sequentially (host then path)
+                ulong hash = Startup.HashHostAndPath(host.AsSpan(), path.AsSpan());
+
+                // Add to dictionary
+                result[hash] = kvp.Value;
+            }
+
+            return result;
         }
         public void LoadDefaults()
         {

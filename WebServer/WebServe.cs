@@ -92,47 +92,94 @@ namespace WebServer
              {
                  endpoints.Map("/{**catchAll}", async context =>
                  {
-                     if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain))
+                     if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain)) // while .Host is nullable, it is always set in this case. Checking for .HasValue would waste a CPU cycle, probably.
                      {
                          context.Request.Host = new HostString(OtherDomain);
                      }
-                     if (Program.config.UrlAlias.TryGetValue(context.Request.Host.Value + context.Request.Path.Value, out string? NewPath))
+                     ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
+                     ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
+                     ulong key = HashHostAndPath(_host, _path);
+                     if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath))
                      {
-                         context.Request.Path = new PathString(NewPath);
+                         context.Request.Path = new PathString(newPath);
                      }
-                     List<string> path = GetDomainBasedPath(context); // Extract the request path
-                     if (path.Count > Program.config.MaxDirDepth)
+
+                     string[] pathBuffer = ArrayPool<string>.Shared.Rent(Program.config.MaxDirDepth + 2);
+                     try
                      {
-                         context.Response.StatusCode = 414;
-                         return;
-                     }
-                     context.Response.Headers.AddItems(defaultHeadersDict); // Fast defaultHeaders
-                     /* Manual: foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
-                     {
-                         context.Response.Headers[header.Key] = header.Value;
-                     }*/
-                     string FileToUse = string.Join("/", path);
-                     if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1][path[path.Count - 1].Length - 1] != '/')) // linking directly to a file or a directory
-                     {
-                         while (!FileLead.TryGetValue((FileToUse = string.Join("/", path)), out _Handler) && path.Count > 2) // file does not exist
+                         GetDomainBasedPath(context, pathBuffer, out int pathLen); // fills buffer, sets actual length. Limited by Program.config.MaxDirDepth, no need for extra checks.
+
+                         context.Response.Headers.AddItems(defaultHeadersDict); // Fast defaultHeaders
+
+                         Span<char> filePathBuffer = stackalloc char[Program.config.MaxFilePathLength];
+                         int pos = 0;
+
+                         // Copy segments from pathBuffer into filePathBuffer, separated by '/'
+                         for (int i = 0; i < pathLen; i++)
                          {
-                             path.RemoveAt(path.Count - 1);
+                             string segment = pathBuffer[i];
+
+                             // Copy segment
+                             if (pos + segment.Length >= Program.config.MaxFilePathLength)
+                             {
+                                 context.Response.StatusCode = 414;
+                                 return; // cancel if too long
+                             }
+
+                             segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
+                             pos += segment.Length;
+
+                             // Add '/' between segments if not last
+                             if (i < pathLen - 1)
+                             {
+                                 filePathBuffer[pos++] = '/';
+                             }
+                         }
+                         // At this point filePathBuffer[..pos] contains the full path as a Span<char>
+                         string FileToUse = filePathBuffer.Slice(0, pos).ToString();
+                         if (!FileLead.TryGetValue(FileToUse, out var _Handler))
+                         {
+                             while (pathLen > 2)
+                             {
+                                 pathLen--;
+
+                                 pos = 0;
+                                 for (int i = 0; i < pathLen; i++)
+                                 {
+                                     string segment = pathBuffer[i];
+                                     segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
+                                     pos += segment.Length;
+
+                                     if (i < pathLen - 1)
+                                         filePathBuffer[pos++] = '/';
+                                 }
+
+                                 FileToUse = filePathBuffer.Slice(0, pos).ToString();
+
+                                 if (FileLead.TryGetValue(FileToUse, out _Handler))
+                                     break;
+                             }
+                         }
+
+                         if (_Handler != null)
+                         {
+                             int dotIndex = FileToUse.LastIndexOf('.');
+                             string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
+                             if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
+                             {
+                                 context.Response.Headers.AddItems(headers);
+                             }
+                             await _Handler(context, FileToUse);
+                             return;
                          }
                      }
-                     if (_Handler != null)
+                     finally
                      {
-                         string[] getExt = FileToUse.Split('.');
-                         string Ext = getExt[getExt.Length - 1];
-                         if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
-                         {
-                             context.Response.Headers.AddItems(headers);
-                         }
-                         await _Handler(context, FileToUse);
-                         return;
+                         ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
                      }
 
                      context.Response.StatusCode = 404;
-                     await context.Response.WriteAsync(error404.Replace("${0}", path[1] == "jontvme" ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                     await context.Response.WriteAsync(error404.Replace("${0}", context.Request.Host.Equals("jontv.me") ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
                  });
              });
 
@@ -241,6 +288,7 @@ namespace WebServer
                 start += sep + 1;
             }
         }
+        // Sequential FNV-1a: host then path
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
             ulong hash = 14695981039346656037UL; // FNV-1a offset basis
