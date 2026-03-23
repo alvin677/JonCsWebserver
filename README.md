@@ -5,14 +5,19 @@ Feel free to modify the code to make it more performant :)
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
 `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --backend=/var/www/dynamic_files`<br/>
 The args you don't send through command are loaded from config instead.
-
 ## Static files
-This webserver *should* be excellent for static files. If you *only* want to serve static files you can use the config file to set the "WWWdir" to a directory.
+<details>
+<summary>This webserver *should* be excellent for static files.</summary>
+  
+If you *only* want to serve static files you can use the config file to set the "WWWdir" to a directory.
 You can also use the `--webPath` startup arg: `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --webPath=/staticfiles`<br/>
 Using our `--backend` works very well for serving static files too.
+</details>
 
 ## Proxy
-Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!
+<details>
+<summary>Need to redirect specific files to another endpoint, such as node or bun? You can do that in the `JonCsWebConfig.json`!</summary>
+  
 ```json
   "ForwardExt": {
     "deno": "https://{domain}:8443",
@@ -21,9 +26,12 @@ Need to redirect specific files to another endpoint, such as node or bun? You ca
 ```
 In the example above, files.deno would be proxied to https://sameDomain:8443/samePath?sameQuery, and files.bun would be proxied to http://sameDomain:3000/samePath?sameQuery<br/>
 Also supports proxying websockets, it automatically replaces http:// with ws:// and https:// with wss:// when a websocket connection is made.
+</details>
 
 ## C# backend (Enable_CS: true)
-You can write C# files for backend.<br/>
+<details>
+<summary>You can write C# files for backend.</summary><br/>
+  
 (**broken**) For direct compilation write files ending with `._cs`:
 ```cs
 using Microsoft.AspNetCore.Http;
@@ -99,11 +107,13 @@ public class Is_CsScript
     }
 }
 ```
+</details>
 
 ## PHP backend (Enable_PHP: true)
-PHP is a very popular backend language.  
-To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance + set `Enable_PHP = true` in the `JonCsWebConfig.json` config file.<br/>
-How to setup?
+<details>
+<summary>PHP is a very popular backend language.</summary>  
+  
+To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance. Set `"Enable_PHP": true` in the `JonCsWebConfig.json` config file.<br/>
 1. `nano /etc/php*/*/fpm/pool.d/*.conf`
 2. If possible, use `listen = /run/php/php8.2-fpm.sock` (replace `php8.2-fpm` with your version). If not possible to use Unix socket, set port under `listen =` (so `listen = 9000` for example) (Unix socket ~40 ms lower latency compared to TCP on localhost)
 3. While you are editing that file, we recommend to set `pm.max_children` from `5` -> `28` (the amount of cores you have, preferebly), and `pm.start_servers` from `2` -> `3`. Use your own settings if you know what you are doing.
@@ -111,3 +121,4 @@ How to setup?
 5. `JonCsWebConfig.json`:
 -  set `Enable_PHP` to true,
 -  make sure the `PHP_FPM` is set to the correct Unix socket OR ip:port (`/run/php/php8.2-fpm.sock` for Unix socket, or `127.0.0.1:9000` if you set port, for example)
+</details>
