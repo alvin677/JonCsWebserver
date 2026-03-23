@@ -158,7 +158,7 @@ To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS
 
 running (0m30.0s), 0000/2800 VUs, 3120073 complete and 0 interrupted iterations
 ```
-Serving html file (Kestrel's SendFileAsync):
+Serving 11.5KB html file (Kestrel's SendFileAsync):
 ```bash
      execution: local
         script: test-kestrel.js
@@ -186,5 +186,26 @@ Serving html file (Kestrel's SendFileAsync):
 
 
 running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
+```
+  ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	| Linux debian 6.1.0-17-amd64 6.1.69-1 (2023-12-30) | Tests done using `k6`
+  Roughly 2000% CPU utilization (2x CPUs = 28 cores)
+  ```bash
+  12 threads and 2000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     4.95ms    6.75ms 247.07ms   84.70%
+    Req/Sec    35.68k    10.25k   60.65k    64.51%
+  12730391 requests in 30.09s, 2.96GB read
+Requests/sec: 423098.10
+Transfer/sec:    100.87MB
+```
+Serving 11.5KB html file
+```bash
+  12 threads and 2000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    12.39ms    9.80ms  86.20ms   72.16%
+    Req/Sec    13.91k     2.15k   32.69k    72.46%
+  4976075 requests in 30.09s, 55.22GB read
+Requests/sec: 165351.84
+Transfer/sec:      1.84GB
 ```
 </details>
