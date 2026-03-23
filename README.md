@@ -137,7 +137,6 @@ To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS
      scenarios: (100.00%) 1 scenario, 2800 max VUs, 1m0s max duration (incl. graceful stop):
               * default: 2800 looping VUs for 30s (gracefulStop: 30s)
 
-
      data_received..................: 779 MB  26 MB/s
      data_sent......................: 287 MB  9.6 MB/s
      http_req_blocked...............: avg=51.63µs  min=1.95µs  med=4.34µs  max=1.12s    p(90)=5.87µs   p(95)=6.65µs
@@ -157,5 +156,34 @@ To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS
 
 
 running (0m30.0s), 0000/2800 VUs, 3120073 complete and 0 interrupted iterations
+```
+Serving html file (Kestrel's SendFileAsync):
+```bash
+     execution: local
+        script: test-kestrel.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 2800 max VUs, 1m0s max duration (incl. graceful stop):
+              * default: 2800 looping VUs for 30s (gracefulStop: 30s)
+
+     data_received..................: 27 GB   903 MB/s
+     data_sent......................: 182 MB  6.1 MB/s
+     http_req_blocked...............: avg=466.72µs min=2.04µs   med=4.56µs  max=1.21s   p(90)=6.35µs   p(95)=7.2µs
+     http_req_connecting............: avg=441.64µs min=0s       med=0s      max=1.21s   p(90)=0s       p(95)=0s
+     http_req_duration..............: avg=11.44ms  min=128.29µs med=6.43ms  max=4.54s   p(90)=27.24ms  p(95)=34.06ms
+       { expected_response:true }...: avg=11.44ms  min=128.29µs med=6.43ms  max=4.54s   p(90)=27.24ms  p(95)=34.06ms
+     http_req_failed................: 0.00%   0 out of 2273265
+     http_req_receiving.............: avg=888.65µs min=18.18µs  med=43.55µs max=89.57ms p(90)=278.64µs p(95)=2.97ms
+     http_req_sending...............: avg=330.24µs min=5.68µs   med=11.54µs max=87.95ms p(90)=200.72µs p(95)=694.79µs
+     http_req_tls_handshaking.......: avg=0s       min=0s       med=0s      max=0s      p(90)=0s       p(95)=0s
+     http_req_waiting...............: avg=10.22ms  min=83.61µs  med=5.86ms  max=4.54s   p(90)=25.29ms  p(95)=30.16ms
+     http_reqs......................: 2273265 75703.775946/s
+     iteration_duration.............: avg=34.91ms  min=20.19ms  med=29.02ms max=4.57s   p(90)=52.57ms  p(95)=62.07ms
+     iterations.....................: 2273265 75703.775946/s
+     vus............................: 2800    min=2800         max=2800
+     vus_max........................: 2800    min=2800         max=2800
+
+
+running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
 ```
 </details>
