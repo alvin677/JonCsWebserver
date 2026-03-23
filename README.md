@@ -1,6 +1,7 @@
 # JonCsWebserver
-Performance-focused C# web server, with backend file scripting support and customizable.
-Feel free to modify the code to make it more performant :)
+Performance-focused C# web server, with backend file scripting support and customizable.<br>
+Simply drop-in this webserver in-place of e.g. Apache and get a free performance boost (more than double the performance out-of-the-box)! PHP support, static file support, and more.<br>
+Feel free to fork, modify the code and send push requests to make it more performant! :)
 
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
 `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --backend=/var/www/dynamic_files`<br/>
