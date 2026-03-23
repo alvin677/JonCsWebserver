@@ -246,7 +246,7 @@ namespace WebServer
                 FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
             }
         }
-    public static List<string> GetDomainBasedPath(HttpContext context)
+        public static List<string> GetDomainBasedPath(HttpContext context)
         {
             // Optionally, append the requested path if needed
             string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
