@@ -34,7 +34,6 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        public static HeaderDictionary defaultHeadersDict = new HeaderDictionary();
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
@@ -106,11 +105,10 @@ namespace WebServer
                          context.Response.StatusCode = 414;
                          return;
                      }
-                     context.Response.Headers.AddItems(defaultHeadersDict); // Fast defaultHeaders
-                     /* Manual: foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
+                     foreach (KeyValuePair<string, string> header in Program.config.DefaultHeaders)
                      {
                          context.Response.Headers[header.Key] = header.Value;
-                     }*/
+                     }
                      string FileToUse = string.Join("/", path);
                      if (!FileLead.TryGetValue(FileToUse, out var _Handler) && (path[path.Count - 1].Length < 1 || path[path.Count - 1][path[path.Count - 1].Length - 1] != '/')) // linking directly to a file or a directory
                      {
@@ -123,9 +121,12 @@ namespace WebServer
                      {
                          string[] getExt = FileToUse.Split('.');
                          string Ext = getExt[getExt.Length - 1];
-                         if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
+                         if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                          {
-                             context.Response.Headers.AddItems(headers);
+                             for (int i = 0; i < ctype.Length; i += 2)
+                             {
+                                 context.Response.Headers[ctype[i]] = ctype[i + 1];
+                             }
                          }
                          await _Handler(context, FileToUse);
                          return;
@@ -160,8 +161,6 @@ namespace WebServer
         }
         public static void Reload2()
         {
-            defaultHeadersDict.Clear();
-            foreach (var kvp in Program.config.DefaultHeaders) defaultHeadersDict[kvp.Key] = new StringValues(kvp.Value);
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -199,7 +198,7 @@ namespace WebServer
                 FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
             }
         }
-    public static List<string> GetDomainBasedPath(HttpContext context)
+        public static List<string> GetDomainBasedPath(HttpContext context)
         {
             // Optionally, append the requested path if needed
             string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
@@ -208,50 +207,6 @@ namespace WebServer
             if (requestPath != null) fullPath.AddRange(requestPath);
 
             return fullPath;
-        }
-        public static void GetDomainBasedPath(HttpContext context, Span<string> buffer, out int length)
-        {
-            length = 0;
-
-            // BackendDir
-            buffer[length++] = Program.BackendDir;
-
-            // Host processing
-            string host = context.Request.Host.Value;
-            int colonIndex = host.IndexOf(':');
-            if (colonIndex != -1) host = host[..colonIndex];
-
-            if (!string.IsNullOrEmpty(Program.config.FilterFromDomain))
-                host = host.Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
-
-            buffer[length++] = host;
-
-            // Request path
-            ReadOnlySpan<char> path = context.Request.Path.Value.AsSpan().Trim('/');
-            int start = 0;
-            while (start < path.Length)
-            {
-                int sep = path.Slice(start).IndexOf('/');
-                if (sep == -1) sep = path.Length - start;
-
-                ReadOnlySpan<char> part = path.Slice(start, sep);
-                if (!part.SequenceEqual("..".AsSpan())) // prevent directory traversal
-                    buffer[length++] = part.ToString(); // unavoidable allocation here if you store strings
-
-                start += sep + 1;
-            }
-        }
-        public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
-        {
-            ulong hash = 14695981039346656037UL; // FNV-1a offset basis
-
-            foreach (char c in host)
-                hash = (hash ^ c) * 1099511628211UL;
-
-            foreach (char c in path)
-                hash = (hash ^ c) * 1099511628211UL;
-
-            return hash;
         }
 
         private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
@@ -704,9 +659,9 @@ namespace WebServer
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
                     
-                    if (Program.config.OptExtTypes.TryGetValue(Ext, out var headers))
+                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                     {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; context.Response.Headers.AddItems(headers); return Handler(context, path); };
+                        FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
                     }else
                     {
                         FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };
