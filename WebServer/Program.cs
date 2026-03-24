@@ -19,7 +19,7 @@ public class Program
     public static string BackendDir = "/var/www";
     public static string LocalIP = IPFinder.GetLocalIPAddress();
     public static Config config = new Config();
-    static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.InvariantCultureIgnoreCase);
+    static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.OrdinalIgnoreCase);
     public static void Main(string[] args)
     {
         config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
