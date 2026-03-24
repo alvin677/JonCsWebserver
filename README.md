@@ -124,7 +124,7 @@ To support PHP, install php-fpm with `apt install php-fpm` (depending on your OS
 -  make sure the `PHP_FPM` is set to the correct Unix socket OR ip:port (`/run/php/php8.2-fpm.sock` for Unix socket, or `127.0.0.1:9000` if you set port, for example)
 </details>
 
-## Speedtests / stresstests
+## Benchmarks / Speedtests / Stresstests
 <details>
   <summary>Test how much traffic the webserver can handle.</summary>
 
