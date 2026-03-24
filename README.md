@@ -189,6 +189,8 @@ running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
 ```
   ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	| Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `wrk`
   Roughly 2000% CPU utilization (2x CPUs = 28 cores) (~500% wrk usage)
+  
+  HTTP
   ```bash
   12 threads and 2000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -198,7 +200,17 @@ running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
 Requests/sec: 423098.10
 Transfer/sec:    100.87MB
 ```
-Serving 11.5KB html file
+HTTPS
+```
+  12 threads and 2000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     9.99ms   27.77ms 625.99ms   98.39%
+    Req/Sec    19.98k     6.39k   39.28k    66.76%
+  6985604 requests in 30.10s, 1.63GB read
+Requests/sec: 232114.23
+Transfer/sec:     55.35MB
+```
+HTTP Serving 11.5KB html file
 ```bash
   12 threads and 2000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
