@@ -41,7 +41,7 @@ namespace WebServer
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount
+            MaxDegreeOfParallelism = Environment.ProcessorCount > 14 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
         };
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
 
