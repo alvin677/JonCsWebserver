@@ -314,11 +314,21 @@ namespace WebServer
         {
             ulong hash = 14695981039346656037UL; // FNV-1a offset basis
 
-            foreach (char c in host)
+            for (int i = 0; i < host.Length; i++)
+            {
+                char c = host[i];
+                // Fast ASCII lowercase normalization
+                if (c >= 'A' && c <= 'Z') c |= (char)32;
                 hash = (hash ^ c) * 1099511628211UL;
+            }
 
-            foreach (char c in path)
+            for (int i = 0; i < path.Length; i++)
+            {
+                char c = path[i];
+                // If you want path to be case-sensitive, skip this line
+                if (c >= 'A' && c <= 'Z') c |= (char)32;
                 hash = (hash ^ c) * 1099511628211UL;
+            }
 
             return hash;
         }
