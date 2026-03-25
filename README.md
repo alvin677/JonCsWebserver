@@ -140,7 +140,7 @@ public class Is_CsScript
     public static async Task Run(HttpContext context, string path)
     {
 /*
-        string? sessID = context.Request.Cookies[Program.config.SessionCookieName];
+        _ = context.Request.Cookies.TryGetValue(Program.config.SessionCookieName, out string? sessID);
         Dictionary<string,string>? session = await WebServer.Session.GetSess(sessID);
         if (session == null)
         {
