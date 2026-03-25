@@ -136,6 +136,8 @@ public class Is_CsScript
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             return;
         }
+        sessID = session["id"];
+        context.Response.Headers.SetCookie = "SESSID=" + sessID + "; Secure; Httponly; Path =/; SameSite = Lax; Expires = " + DateTime.UtcNow.AddDays(31);
         session["m"] = "mail@jontv.me";
         await WebServer.Session.SaveSess(sessID, session);
 */
