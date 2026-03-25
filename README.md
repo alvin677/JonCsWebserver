@@ -106,7 +106,8 @@ public class Is_CsScript
 wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
 bash dotnet-install.sh --channel 9.0
 export PATH=$HOME/.dotnet:$PATH
-
+```
+```bash
 mkdir MyLibrary
 cd MyLibrary
 dotnet new classlib -n MyLibrary
@@ -122,10 +123,22 @@ nano Class1.cs
 ```cs
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
+using WebServer;
 public class Is_CsScript
 {
     public static async Task Run(HttpContext context, string path)
     {
+/*
+        string? sessID = context.Request.Cookies[Program.config.SessionCookieName];
+        Dictionary<string,string>? session = await WebServer.Session.GetSess(sessID);
+        if (session == null)
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            return;
+        }
+        session["m"] = "mail@jontv.me";
+        await WebServer.Session.SaveSess(sessID, session);
+*/
         await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
     }
 }
