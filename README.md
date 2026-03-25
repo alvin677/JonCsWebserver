@@ -97,6 +97,17 @@ public class Is_CsScript
     }
 }
 ```
+(**broken**) For direct compilation write files ending with `._cs`:
+```cs
+using Microsoft.AspNetCore.Http;
+public class script {
+ public static async System.Threading.Tasks.Task Run(HttpContext context, string path) {
+  context.Response.ContentType = "text/plain";
+  await context.Response.WriteAsync($"Hello there! Path: {path}");
+ }
+}
+return new script();
+```
 </details>
 <details>
   <summary>Quick C# -> .dll compile</summary>
