@@ -114,6 +114,9 @@ dotnet new classlib -n MyLibrary
 ```bash
 cd MyLibrary
 dotnet add package Microsoft.AspNetCore.Http.Abstractions
+mkdir libs
+wget https://github.com/alvin677/JonCsWebserver/releases/download/1.32/WebServer.dll -O libs/WebServer.dll
+dotnet add reference libs/WebServer.dll
 nano Class1.cs
 ```
 ```cs
