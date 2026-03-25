@@ -19,6 +19,7 @@ using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Wasmtime;
@@ -102,10 +103,12 @@ namespace WebServer
              {
                  endpoints.Map("/{**catchAll}", async context =>
                  {
+#pragma warning disable CS8604 // Possible null reference argument.
                      if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain)) // while .Host is nullable, it is always set in this case. Checking for .HasValue would waste a CPU cycle, probably.
                      {
                          context.Request.Host = new HostString(OtherDomain);
                      }
+#pragma warning restore CS8604 // Possible null reference argument.
                      ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
                      ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
                      ulong key = HashHostAndPath(_host, _path);
@@ -243,6 +246,7 @@ namespace WebServer
             if (!Program.config.ForceTLS)
             {
                 handler.ServerCertificateCustomValidationCallback = IgnoreCert;
+                handler.CheckCertificateRevocationList = false;
             }
             else handler.ServerCertificateCustomValidationCallback = null;
 
@@ -316,6 +320,7 @@ namespace WebServer
             }
         }
         // Sequential FNV-1a: host then path
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
             ulong hash = 14695981039346656037UL; // FNV-1a offset basis
@@ -323,8 +328,8 @@ namespace WebServer
             for (int i = 0; i < host.Length; i++)
             {
                 char c = host[i];
-                // Fast ASCII lowercase normalization
-                if (c >= 'A' && c <= 'Z') c |= (char)32;
+                // Branch-free ASCII lowercase: only OR 32 if 'A' <= c <= 'Z'
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * 1099511628211UL;
             }
 
@@ -332,7 +337,7 @@ namespace WebServer
             {
                 char c = path[i];
                 // If you want path to be case-sensitive, skip this line
-                if (c >= 'A' && c <= 'Z') c |= (char)32;
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * 1099511628211UL;
             }
 
@@ -951,7 +956,7 @@ namespace WebServer
                 var memory = instance.GetMemory("memory");
                 if (memory == null)
                 {
-                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                     return;
                 }
                 wasmCtx.Memory = memory;

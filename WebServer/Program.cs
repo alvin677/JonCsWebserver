@@ -287,7 +287,6 @@ public class Program
                         listenOptions.UseHttps(httpsOptions => {
                             httpsOptions.ServerCertificateSelector = (features, name) =>
                             {
-                                //ulong hash = Fnv1aHashIgnoreCase(name.AsSpan());
                                 if (Certs.TryGetValue(name, out X509Certificate2? Cert))
                                     return Cert;
                                 return fallbackCert;
@@ -324,11 +323,6 @@ public class Program
         }
 
         return hash;
-    }
-    struct CertEntry
-    {
-        public string Host;
-        public X509Certificate2 Cert;
     }
     public static void LoadCerts(string certPath)
     {
