@@ -171,6 +171,9 @@ Did `dotnet add reference libs/WebServer.dll` not work?
   ```xml
 ...
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="WebServer">
       <HintPath>libs/WebServer.dll</HintPath>
     </Reference>
