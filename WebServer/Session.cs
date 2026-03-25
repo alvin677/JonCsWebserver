@@ -4,12 +4,13 @@ namespace WebServer
 {
     public class Session
     {
+        static Random random = new Random();
         public static async Task<Dictionary<string,string>?> GetSess(string? id)
         {
             if (id == null)
             {
-                string nid = GenerateRandomId();
                 byte attempt = 0;
+                string nid = GenerateRandomId();
                 while (!Startup.Sessions.ContainsKey(nid) && attempt < 5 && !File.Exists(Path.Combine(Program.config.SessionsDir, nid)))
                 {
                     if (nid.Length > 128)
@@ -47,7 +48,6 @@ namespace WebServer
         }
         public static string GenerateRandomId(int length = 8)
         {
-            Random random = new Random();
             return new string(Enumerable.Range(0, length).Select(_ => Program.config.Rand_Alphabet[random.Next(Program.config.Rand_Alphabet.Length)]).ToArray());
         }
     }

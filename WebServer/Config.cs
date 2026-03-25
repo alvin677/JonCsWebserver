@@ -9,6 +9,7 @@ namespace WebServer
     {
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
+        public bool Enable_WASM { get; set; }
         public bool ForceTLS { get; set; }
         public bool BufferFastCGIResponse { get; set; }
         public long? MaxConcurrentConnections { get; set; }
@@ -103,6 +104,7 @@ namespace WebServer
         {
             Enable_PHP = false;
             Enable_CS = true;
+            Enable_WASM = true;
             ForceTLS = false;
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;
@@ -130,7 +132,7 @@ namespace WebServer
             DomainFilterTo = "";
             PHP_FPM = "127.0.0.1:9000";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index.njs", "index.bun", "index.html", "index.htm"];
+            indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index._wasm", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
             "zip", "tar", "gz", "rar",
@@ -149,6 +151,7 @@ namespace WebServer
                 ["svg"] = ["Content-Type: image/svg+xml"],
                 ["mp3"] = ["Content-Type: audio/mpeg"],
                 ["apk"] = ["Content-Type: application/vnd.android.package-archive"],
+                ["wasm"] = ["Content-Type: application/wasm"],
             };
             ForwardExt = new Dictionary<string, string>()
             {
