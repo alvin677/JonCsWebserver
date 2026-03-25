@@ -137,7 +137,7 @@ public class Is_CsScript
             return;
         }
         sessID = session["id"];
-        context.Response.Headers.SetCookie = Program.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path =/; SameSite = Lax; Expires = " + DateTime.UtcNow.AddDays(31);
+        context.Response.Headers.SetCookie = Program.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path=/; SameSite=Lax; Expires=" + DateTime.UtcNow.AddDays(31);
         session["m"] = "mail@jontv.me";
         await WebServer.Session.SaveSess(sessID, session);
 */
