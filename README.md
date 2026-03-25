@@ -168,7 +168,8 @@ mv bin/Release/net9.0/MyLibrary.dll /var/www/localhost/example/index._csdll
 
 Did `dotnet add reference libs/WebServer.dll` not work?
   `nano MyLibrary.csproj`
-  ```xml
+
+```xml
 ...
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
