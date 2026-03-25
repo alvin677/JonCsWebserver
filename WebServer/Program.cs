@@ -95,7 +95,11 @@ public class Program
                     case "indexfiles":
                         {
                             string indx = BackendDir + String.Join(' ', Args.Skip(1));
-                            _ = Task.Run(()=>Startup.IndexFiles(indx)); // prevent stalling + prevent crashing from invalid path
+                            _ = Task.Run(()=>
+                            {
+                                Startup.IndexFiles(indx);
+                                Startup.IndexDirectories(indx);
+                            }); // prevent stalling + prevent crashing from invalid path
                             Console.WriteLine("Indexed " + indx);
                             break;
                         }
