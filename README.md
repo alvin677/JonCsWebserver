@@ -163,6 +163,21 @@ dotnet build -c Release
 mv bin/Release/net9.0/MyLibrary.dll /var/www/localhost/example/index._csdll
 ```
 </details>
+<details>
+  <summary>Issues</summary>
+
+Did `dotnet add reference libs/WebServer.dll` not work?
+  `nano MyLibrary.csproj`
+  ```xml
+...
+  <ItemGroup>
+    <Reference Include="WebServer">
+      <HintPath>libs/WebServer.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
+```
+</details>
 
 ## PHP backend (Enable_PHP: true)
 <details>
