@@ -33,18 +33,7 @@ Also supports proxying websockets, it automatically replaces http:// with ws:// 
 <details>
 <summary>You can write C# files for backend.</summary><br/>
   
-(**broken**) For direct compilation write files ending with `._cs`:
-```cs
-using Microsoft.AspNetCore.Http;
-public class script {
- public static async System.Threading.Tasks.Task Run(HttpContext context, string path) {
-  context.Response.ContentType = "text/plain";
-  await context.Response.WriteAsync($"Hello there! Path: {path}");
- }
-}
-return new script();
-```
-(**works since version 0.76**) You can also use pre-compiled .dll C# library files, rename the extension from `.dll` to `._csdll`:
+(**works since version 0.76**) You can use pre-compiled .dll C# library files, rename the extension from `.dll` to `._csdll`:
 <br>Example 1:
 ```cs
 using Microsoft.AspNetCore.Http;
@@ -107,6 +96,42 @@ public class Is_CsScript
         await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
     }
 }
+```
+</details>
+<details>
+  <summary>Quick C# -> .dll compile</summary>
+
+  ```bash
+# Ubuntu/Debian example
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+bash dotnet-install.sh --channel 9.0
+export PATH=$HOME/.dotnet:$PATH
+
+mkdir MyLibrary
+cd MyLibrary
+dotnet new classlib -n MyLibrary
+```
+```bash
+cd MyLibrary
+dotnet add package Microsoft.AspNetCore.Http.Abstractions
+nano Class1.cs
+```
+```cs
+using Microsoft.AspNetCore.Http;
+using System.Threading.Tasks;
+public class Is_CsScript
+{
+    public static async Task Run(HttpContext context, string path)
+    {
+        await context.Response.WriteAsync(context.Connection.RemoteIpAddress.ToString());
+    }
+}
+```
+```bash
+dotnet build -c Release
+```
+```bash
+mv bin/Release/net9.0/MyLibrary.dll /var/www/localhost/example/index._csdll
 ```
 </details>
 
