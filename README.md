@@ -25,8 +25,8 @@ Using our `--backend` works very well for serving static files too.
     "bun": "http://{domain}:3000"
   }
 ```
-In the example above, files.deno would be proxied to https://sameDomain:8443/samePath?sameQuery, and files.bun would be proxied to http://sameDomain:3000/samePath?sameQuery<br/>
-Also supports proxying websockets, it automatically replaces http:// with ws:// and https:// with wss:// when a websocket connection is made.
+In the example above, `files.deno` would be proxied to https://sameDomain:8443/samePath?sameQuery, and `files.bun` would be proxied to http://sameDomain:3000/samePath?sameQuery<br/>
+Also supports proxying websockets. It automatically replaces http:// with ws:// and https:// with wss:// when a websocket connection is made.
 </details>
 
 ## C# backend (Enable_CS: true)
