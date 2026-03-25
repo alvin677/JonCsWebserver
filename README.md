@@ -170,7 +170,6 @@ Did `dotnet add reference libs/WebServer.dll` not work?
   `nano MyLibrary.csproj`
 
 ```xml
-...
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
   </ItemGroup>
