@@ -673,7 +673,10 @@ namespace WebServer
 
         public static void IndexFiles(string rootDirectory)
         {
-            Parallel.ForEach(Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories), paralleloptions, file =>
+            var files = Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories);
+            var partitioner = Partitioner.Create(files, EnumerablePartitionerOptions.NoBuffering);
+
+            Parallel.ForEach(partitioner, paralleloptions, file =>
             {
                 IndexFile(file.Replace(Path.DirectorySeparatorChar, '/'));
             });
@@ -790,10 +793,9 @@ namespace WebServer
         }
         public static void IndexDirectories(string rootDirectory)
         {
-            Parallel.ForEach(Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories), paralleloptions, Folder =>
-            {
+            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories)) {
                 IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
-            });
+            }
         }
         public static void IndexDirectory(string Folder)
         {
