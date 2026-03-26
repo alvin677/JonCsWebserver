@@ -1,5 +1,6 @@
 ﻿using CSScripting;
 using CSScriptLib;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -18,8 +19,10 @@ using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using Wasmtime;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace WebServer
@@ -37,6 +40,10 @@ namespace WebServer
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
+        public static ParallelOptions paralleloptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount > 14 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
+        };
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
 
         static int defaultHeaderCount = 0;
@@ -96,10 +103,12 @@ namespace WebServer
              {
                  endpoints.Map("/{**catchAll}", async context =>
                  {
+#pragma warning disable CS8604 // Possible null reference argument.
                      if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain)) // while .Host is nullable, it is always set in this case. Checking for .HasValue would waste a CPU cycle, probably.
                      {
                          context.Request.Host = new HostString(OtherDomain);
                      }
+#pragma warning restore CS8604 // Possible null reference argument.
                      ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
                      ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
                      ulong key = HashHostAndPath(_host, _path);
@@ -237,6 +246,7 @@ namespace WebServer
             if (!Program.config.ForceTLS)
             {
                 handler.ServerCertificateCustomValidationCallback = IgnoreCert;
+                handler.CheckCertificateRevocationList = false;
             }
             else handler.ServerCertificateCustomValidationCallback = null;
 
@@ -310,15 +320,26 @@ namespace WebServer
             }
         }
         // Sequential FNV-1a: host then path
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
             ulong hash = 14695981039346656037UL; // FNV-1a offset basis
 
-            foreach (char c in host)
+            for (int i = 0; i < host.Length; i++)
+            {
+                char c = host[i];
+                // Branch-free ASCII lowercase: only OR 32 if 'A' <= c <= 'Z'
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * 1099511628211UL;
+            }
 
-            foreach (char c in path)
+            for (int i = 0; i < path.Length; i++)
+            {
+                char c = path[i];
+                // If you want path to be case-sensitive, skip this line
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * 1099511628211UL;
+            }
 
             return hash;
         }
@@ -652,10 +673,13 @@ namespace WebServer
 
         public static void IndexFiles(string rootDirectory)
         {
-            foreach (string file in Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories))
+            var files = Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories);
+            var partitioner = Partitioner.Create(files, EnumerablePartitionerOptions.NoBuffering);
+
+            Parallel.ForEach(partitioner, paralleloptions, file =>
             {
                 IndexFile(file.Replace(Path.DirectorySeparatorChar, '/'));
-            }
+            });
         }
         public static void IndexFile(string file)
         {
@@ -687,6 +711,18 @@ namespace WebServer
                 else if (Ext == "phpdll")
                 {
                     try { LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
+                    return;
+                }
+            }
+            if(Program.config.Enable_WASM)
+            {
+                if(Ext == "_wasm")
+                {
+                    try
+                    {
+                        LoadWasm(file);
+                    }
+                    catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
                 }
             }
@@ -757,8 +793,7 @@ namespace WebServer
         }
         public static void IndexDirectories(string rootDirectory)
         {
-            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories))
-            {
+            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories)) {
                 IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
             }
         }
@@ -909,19 +944,48 @@ namespace WebServer
             FileLead[file[..^3]] = func; // ._csdll -> ._cs
             LiveAssemblies[file[..^3]] = context;
         }
+        public static void LoadWasm(string file)
+        {
+            var module = Wasm.Load(file);
+            FileLead[file] = async (context, path) =>
+            {
+                using var store = new Store(Wasm.WasmEngine);
+                var wasmCtx = new Wasm.WasmContext { Http = context };
+                store.SetData(wasmCtx);
+                var linker = Wasm.Init(store);
+
+                var instance = linker.Instantiate(store, module);
+                var memory = instance.GetMemory("memory");
+                if (memory == null)
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    return;
+                }
+                wasmCtx.Memory = memory;
+
+                var handle = instance.GetAction("handle");
+                if (handle == null)
+                {
+                    context.Response.StatusCode = StatusCodes.Status501NotImplemented;
+                    return;
+                }
+                handle();
+
+                await context.Response.BodyWriter.FlushAsync();
+            };
+        }
 
         public static void LoadPhpAssembly(string filePath)
         {
             Assembly assembly = Assembly.Load(File.ReadAllBytes(filePath + "dll"));
 
-            // Find a specific class or method (depending on how your PHP script is structured)
-            Type? type = assembly.GetType("Is_PhpScript"); // Use the namespace/class name in your PHP file.
+            Type? type = assembly.GetType("Is_PhpScript"); // namespace/class name in your PHP file.
             if (type == null)
             {
                 Console.WriteLine("Make sure to use the namespace Is_PhpScript for .phpdll-files!");
                 return;
             }
-            var method = type.GetMethod("Run"); // Assuming "Run" is the entry point.
+            var method = type.GetMethod("Run"); // "Run" is the entry point.
 
             // Create a delegate for the method (this assumes it's compatible)
             Func<HttpContext, string, Task> phpFunction = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(

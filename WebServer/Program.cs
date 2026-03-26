@@ -1,16 +1,17 @@
-﻿using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.Logging;
-using Microsoft.CodeAnalysis;
-using System.Diagnostics;
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.ResponseCompression;
-using WebServer;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.Net;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Xml.Linq;
+using WebServer;
 
 public class Program
 {
@@ -20,6 +21,7 @@ public class Program
     public static string LocalIP = IPFinder.GetLocalIPAddress();
     public static Config config = new Config();
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.OrdinalIgnoreCase);
+    static X509Certificate2? fallbackCert = null;
     public static void Main(string[] args)
     {
         config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
@@ -93,7 +95,11 @@ public class Program
                     case "indexfiles":
                         {
                             string indx = BackendDir + String.Join(' ', Args.Skip(1));
-                            _ = Task.Run(()=>Startup.IndexFiles(indx)); // prevent stalling + prevent crashing from invalid path
+                            _ = Task.Run(()=>
+                            {
+                                Startup.IndexFiles(indx);
+                                Startup.IndexDirectories(indx);
+                            }); // prevent stalling + prevent crashing from invalid path
                             Console.WriteLine("Indexed " + indx);
                             break;
                         }
@@ -105,6 +111,7 @@ public class Program
                     case "clearcerts":
                         {
                             Certs.Clear();
+                            fallbackCert = null;
                             break;
                         }
                     case "listcerts":
@@ -220,7 +227,7 @@ public class Program
 
                     options.ConfigureHttpsDefaults(adapterOptions =>
                     {
-                        if (Certs.TryGetValue("fallback", out X509Certificate2? cert) && cert != null) adapterOptions.ServerCertificate = cert;
+                        adapterOptions.ServerCertificate = fallbackCert;
                     });
 
                     IPAddress Ipaddress = IPAddress.Any;
@@ -280,15 +287,16 @@ public class Program
                         listenOptions.UseHttps(httpsOptions => {
                             httpsOptions.ServerCertificateSelector = (features, name) =>
                             {
-                                return name != null ? GetCertificateForHost(name) : Certs["fallback"];
+                                if (Certs.TryGetValue(name, out X509Certificate2? Cert))
+                                    return Cert;
+                                return fallbackCert;
                             };
                         });  
                     });
                 });
                 webBuilder.UseStartup<Startup>();
             });
-
-    static void LoadCerts(string certPath)
+    public static void LoadCerts(string certPath)
     {
         Console.ForegroundColor = ConsoleColor.DarkYellow;
         Console.WriteLine("Use --certPath=<dir> to change certificates folder.");
@@ -307,15 +315,18 @@ public class Program
                         Path.Combine(dom, "privkey.pem")
                     );
                     Certs[domain] = cert;
-                    if (!Certs.ContainsKey("fallback")) Certs["fallback"] = Certs[domain];
+
+                    if (fallbackCert == null) fallbackCert = cert;
 
                     List<string> domains = GetDomainsFromCertificate(cert);
-                    foreach (string d in domains)
+                    for (int i = 0; i < domains.Count; i++)
                     {
-                        if (!Certs.TryGetValue(d, out X509Certificate2? value) || value.NotAfter < cert.NotAfter)
+                        string d = domains[i];
+
+                        if (!Certs.TryGetValue(d, out X509Certificate2? Cert) || Cert.NotAfter < cert.NotAfter)
                         {
-                            value = cert;
-                            Certs[d] = value;
+                            Cert = cert;
+                            Certs[d] = Cert;
                         }
                     }
                 }
@@ -352,10 +363,4 @@ public class Program
 
         return domains;
     }
-
-    private static X509Certificate2 GetCertificateForHost(string host)
-    {
-        return Certs.TryGetValue(host, out var cert) ? cert : Certs["fallback"];
-    }
-
 }
