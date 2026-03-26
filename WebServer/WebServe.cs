@@ -30,7 +30,7 @@ namespace WebServer
     public class Startup
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br />${0}<br /><p>Maybe we're working on adding this page.</p>${1}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
+        const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br /><img src=\"//jonhosting.com/JonHost.png\" /><br /><p>Maybe we're working on adding this page.</p>${0}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
         public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
@@ -123,11 +123,6 @@ namespace WebServer
                          Array.Clear(pathBuffer, 0, pathBuffer.Length); // prevent leftover strings
                          GetDomainBasedPath(context, pathBuffer, out int pathLen); // fills buffer, sets actual length. Limited by Program.config.MaxDirDepth, no need for extra checks.
 
-                         for (int i = 0; i < defaultHeaderCount; i++)
-                         {
-                             context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i];
-                         }
-
                          Span<char> filePathBuffer = stackalloc char[Program.config.MaxFilePathLength];
                          int pos = 0;
 
@@ -183,6 +178,10 @@ namespace WebServer
                          {
                              int dotIndex = FileToUse.LastIndexOf('.');
                              string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
+                             for (int i = 0; i < defaultHeaderCount; i++)
+                             {
+                                 context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i]; // perhaps not necessary in 404NotFound?
+                             }
                              if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                              {
                                  for (int i = 0; i < ctype.Length; i += 2)
@@ -200,7 +199,7 @@ namespace WebServer
                      }
 
                      context.Response.StatusCode = 404;
-                     await context.Response.WriteAsync(error404.Replace("${0}", context.Request.Host.Equals("jontv.me") ? "<img src=\"/JonTV/JonTVplay_dark.svg\" class=\"spin\" />" : "<img src=\"//jonhosting.com/JonHost.png\" />").Replace("${1}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                     await context.Response.WriteAsync(error404);
                  });
              });
 
@@ -209,6 +208,7 @@ namespace WebServer
                 {
                     IndexFiles(Program.BackendDir);
                     IndexDirectories(Program.BackendDir);
+                    IndexErrorPages(Program.BackendDir);
                 });
                 SetupFileWatcher(Program.BackendDir);
             }
@@ -820,6 +820,31 @@ namespace WebServer
                 }
             }
             if (!Any && FileLead.ContainsKey(Folder)) FileLead.Remove(Folder, out _);
+        }
+        public static void IndexErrorPages(string rootDirectory)
+        {
+            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly)) // BackendDir: domain1, domain2, domain3
+            {
+                IndexErrorPage(Folder.Replace(Path.DirectorySeparatorChar, '/'));
+            }
+        }
+        public static void IndexErrorPage(string Folder)
+        {
+            string tmpfile = Path.Combine(Folder, "error404.html").Replace(Path.DirectorySeparatorChar, '/');
+            if (FileLead.ContainsKey(tmpfile) && !FileLead.ContainsKey(Folder)) // error404.html exists
+            {
+                // Since we currently loop backwards (at around line 150) rather than give 404 by default,
+                // any time a 404 would be displayed is if /BackendDir/domain is not set.
+                try
+                {
+                    string errcontent = File.ReadAllText(tmpfile);
+                    FileLead[Folder] = async (context, path) => {
+                        context.Response.StatusCode = 404;
+                        await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                    };
+                }
+                catch (Exception) {}
+            }
         }
         void SetupFileWatcher(string rootDirectory)
         {

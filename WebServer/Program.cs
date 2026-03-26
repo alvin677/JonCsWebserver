@@ -99,8 +99,10 @@ public class Program
                             {
                                 Startup.IndexFiles(indx);
                                 Startup.IndexDirectories(indx);
+                                Startup.IndexErrorPages(BackendDir);
+                                Console.WriteLine("Indexed " + indx);
                             }); // prevent stalling + prevent crashing from invalid path
-                            Console.WriteLine("Indexed " + indx);
+                            Console.WriteLine("Indexing " + indx);
                             break;
                         }
                     case "loadcerts":
