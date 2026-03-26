@@ -99,8 +99,10 @@ public class Program
                             {
                                 Startup.IndexFiles(indx);
                                 Startup.IndexDirectories(indx);
+                                Startup.IndexErrorPages(BackendDir);
+                                Console.WriteLine("Indexed " + indx);
                             }); // prevent stalling + prevent crashing from invalid path
-                            Console.WriteLine("Indexed " + indx);
+                            Console.WriteLine("Indexing " + indx);
                             break;
                         }
                     case "loadcerts":
@@ -290,40 +292,12 @@ public class Program
                                 if (Certs.TryGetValue(name, out X509Certificate2? Cert))
                                     return Cert;
                                 return fallbackCert;
-                                // return name != null ? GetCertificateForHost(name) : Certs["fallback"];
                             };
                         });  
                     });
                 });
                 webBuilder.UseStartup<Startup>();
             });
-    // FNV-1a 64-bit hash. Faster hashing, more limited.
-    public static ulong Fnv1aHash(ReadOnlySpan<char> input)
-    {
-        ulong hash = 14695981039346656037UL; // Offset
-
-        for (int i = 0; i < input.Length; i++)
-        {
-            hash ^= input[i];
-            hash *= 1099511628211UL; // Prime
-        }
-
-        return hash;
-    }
-    public static ulong Fnv1aHashIgnoreCase(ReadOnlySpan<char> input)
-    {
-        ulong hash = 14695981039346656037UL;
-
-        for (int i = 0; i < input.Length; i++)
-        {
-            char c = input[i];
-            if (c >= 'A' && c <= 'Z') c |= (char)32; // quick lowercase ASCII
-            hash ^= c;
-            hash *= 1099511628211UL;
-        }
-
-        return hash;
-    }
     public static void LoadCerts(string certPath)
     {
         Console.ForegroundColor = ConsoleColor.DarkYellow;
@@ -343,19 +317,17 @@ public class Program
                         Path.Combine(dom, "privkey.pem")
                     );
                     Certs[domain] = cert;
-                    //ulong hash = Fnv1aHashIgnoreCase(domain.AsSpan());
-                    //Certs[hash] = new CertEntry { Host = domain, Cert = cert };
+
                     if (fallbackCert == null) fallbackCert = cert;
 
                     List<string> domains = GetDomainsFromCertificate(cert);
                     for (int i = 0; i < domains.Count; i++)
                     {
                         string d = domains[i];
-                        // ulong h2 = Fnv1aHashIgnoreCase(d.AsSpan());
+
                         if (!Certs.TryGetValue(d, out X509Certificate2? Cert) || Cert.NotAfter < cert.NotAfter)
                         {
                             Cert = cert;
-                            // value.Host = d;
                             Certs[d] = Cert;
                         }
                     }

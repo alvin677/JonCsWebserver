@@ -104,7 +104,7 @@ namespace WebServer
         {
             Enable_PHP = false;
             Enable_CS = true;
-            Enable_WASM = true;
+            Enable_WASM = false;
             ForceTLS = false;
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;
