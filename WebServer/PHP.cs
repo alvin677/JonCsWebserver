@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using WebServer;
 
@@ -124,10 +125,11 @@ public class FastCGIClient
         await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ushort GetRequestId()
     {
-        requestId++;
-        return requestId == 0 ? ++requestId : requestId;
+        ushort id = ++requestId;
+        return id != 0 ? id : ++requestId;
     }
 
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env)

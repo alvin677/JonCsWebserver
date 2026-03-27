@@ -366,6 +366,4 @@ public class Program
 
         return domains;
     }
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
-    private static readonly Type _cookiesType = typeof(Microsoft.AspNetCore.Http.IRequestCookieCollection);
 }
