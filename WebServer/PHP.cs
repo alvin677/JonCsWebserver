@@ -357,7 +357,7 @@ public class FastCGIClient
             0x00 // reserved
         };
     }
-    private static readonly int MinParamBufferSize = 32 * 1024; // 32KB, tune if needed
+    private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int EncodeLength(int len, Span<byte> dest)
     {
@@ -430,6 +430,7 @@ public class FastCGIClient
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, int length)
     {
         int offset = 0;
