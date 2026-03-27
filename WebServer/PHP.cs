@@ -160,14 +160,15 @@ public class FastCGIClient
         // await fastCgiStream.WriteAsync(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
 
         // PARAMS
-        var paramData = new List<byte>();
+        byte[] paramBuf = ArrayPool<byte>.Shared.Rent(MinParamBufferSize);
+        int paramLen = 0;
         foreach (var kv in env)
-            paramData.AddRange(EncodeNameValuePair(kv.Key, kv.Value));
-        //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
-        //await fastCgiStream.WriteAsync(paramData.ToArray());
+            paramLen += EncodeNameValuePair(kv.Key, kv.Value, paramBuf.AsSpan(paramLen));
 
-        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramData.ToArray());
+        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramBuf.AsMemory(0, paramLen));
         await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, ReadOnlyMemory<byte>.Empty); // Empty PARAMS
+
+        ArrayPool<byte>.Shared.Return(paramBuf);
 
         // Empty PARAMS
         //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
@@ -356,7 +357,33 @@ public class FastCGIClient
             0x00 // reserved
         };
     }
+    private static readonly int MinParamBufferSize = 32 * 1024; // 32KB, tune if needed
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int EncodeLength(int len, Span<byte> dest)
+    {
+        if (len < 128)
+        {
+            dest[0] = (byte)len;
+            return 1;
+        }
+        dest[0] = (byte)((len >> 24) | 0x80);
+        dest[1] = (byte)(len >> 16);
+        dest[2] = (byte)(len >> 8);
+        dest[3] = (byte)len;
+        return 4;
+    }
+    private static int EncodeNameValuePair(string name, string value, Span<byte> dest)
+    {
+        int nameLen = Encoding.UTF8.GetByteCount(name);
+        int valueLen = Encoding.UTF8.GetByteCount(value);
 
+        int pos = 0;
+        pos += EncodeLength(nameLen, dest[pos..]);
+        pos += EncodeLength(valueLen, dest[pos..]);
+        pos += Encoding.UTF8.GetBytes(name, dest[pos..]);
+        pos += Encoding.UTF8.GetBytes(value, dest[pos..]);
+        return pos;
+    }
     private static IEnumerable<byte> EncodeNameValuePair(string name, string value)
     {
         var nameBytes = Encoding.UTF8.GetBytes(name);
