@@ -11,6 +11,7 @@
   <ItemGroup>
     <TrimmerRootAssembly Include="System.Runtime" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Http" />
+    <TrimmerRootAssembly Include="Wasmtime.Dotnet" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,8 +32,12 @@
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
     <PackageReference Include="System.Formats.Asn1" Version="10.0.1" />
     <PackageReference Include="Wasmtime" Version="34.0.2" />
-    <PackageReference Include="Z.Expressions.Eval" Version="6.3.5" />
+    <PackageReference Include="Z.Expressions.Eval" Version="6.3.8" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <TrimmerRootDescriptor Include="linker.xml" />
   </ItemGroup>
 
 </Project>

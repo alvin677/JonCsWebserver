@@ -13,6 +13,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -20,6 +21,7 @@ using System.Net.WebSockets;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Wasmtime;
@@ -176,23 +178,33 @@ namespace WebServer
 
                          if (_Handler != null)
                          {
-                             int dotIndex = FileToUse.LastIndexOf('.');
-                             string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
                              for (int i = 0; i < defaultHeaderCount; i++)
                              {
                                  context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i]; // perhaps not necessary in 404NotFound?
                              }
-                             if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                             int dotIndex = FileToUse.LastIndexOf('.');
+                             //string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
+                             if (dotIndex >= 0)
                              {
-                                 for (int i = 0; i < ctype.Length; i += 2)
+                                 string Ext = FileToUse[(dotIndex + 1)..];
+                                 if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                                  {
-                                     context.Response.Headers[ctype[i]] = ctype[i + 1];
+                                     for (int i = 0; i < ctype.Length; i += 2)
+                                     {
+                                         context.Response.Headers[ctype[i]] = ctype[i + 1];
+                                     }
                                  }
                              }
                              await _Handler(context, FileToUse);
                              return;
                          }
                      }
+//#if DEBUG
+                     catch (Exception e)
+                     {
+                         Console.WriteLine(e);
+                     }
+//#endif
                      finally
                      {
                          ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
@@ -240,6 +252,11 @@ namespace WebServer
             defaultHeaderCount = defaultHeaderKeys.Length;
 
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
+            if (Program.config.Enable_PHP)
+            {
+                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+            }
+
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
@@ -251,12 +268,14 @@ namespace WebServer
             else handler.ServerCertificateCustomValidationCallback = null;
 
             string customLibPath = Path.Combine(AppContext.BaseDirectory, "deps");
+            CSScript.GlobalSettings.AddSearchDir(customLibPath);
+            /*
             try
             {
                 CSScript.RoslynEvaluator.Reset(true);
                 CSScript.EvaluatorConfig.ReferenceDomainAssemblies = false;
                 CSScript.Evaluator.DisableReferencingFromCode = true;
-                
+
                 foreach (string dll in Directory.GetFiles(customLibPath, "*.dll"))
                 {
                     try
@@ -270,12 +289,9 @@ namespace WebServer
                 CSScript.GlobalSettings.AddSearchDir(customLibPath);
                 CSScript.Evaluator.ReferenceAssembly("System");
             }
-            catch (Exception e) { Console.WriteLine(e.Message); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
-
-            if (Program.config.Enable_PHP)
-            {
-                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
-            }
+            catch (Exception e) { Console.WriteLine(e.Message); }
+            */
+            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
         }
         public static List<string> GetDomainBasedPath(HttpContext context)
         {
@@ -941,13 +957,24 @@ namespace WebServer
 
         public static void LoadCompiledFunc(string file)
         {
-            if (LiveAssemblies.TryGetValue(file[..^3], out HotReloadContext? ctx))
+            string toFile = file[..^3];
+            // Clear old Assembly from mem
+            if (LiveAssemblies.TryGetValue(toFile, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
-                LiveAssemblies.Remove(file[..^3]);
+                LiveAssemblies.Remove(toFile); // will be changed below anyway. Unless removing helps the GC?
+                FileLead.Remove(toFile, out _);
+                /*GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();*/
             }
-            HotReloadContext context = new HotReloadContext();
-            Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(file));
+            string fullPath = Path.GetFullPath(file);
+            HotReloadContext context = new HotReloadContext(fullPath);
+            /*foreach (var dll in Directory.GetFiles("libs", "*.dll"))
+            {
+                context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+            }*/
+            Assembly assembly = context.LoadFromAssemblyPath(fullPath);
             Type? type = assembly.GetType("Is_CsScript");
             if (type == null)
             {
@@ -966,8 +993,8 @@ namespace WebServer
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[file[..^3]] = func; // ._csdll -> ._cs
-            LiveAssemblies[file[..^3]] = context;
+            FileLead[toFile] = func; // ._csdll -> ._cs
+            LiveAssemblies[toFile] = context;
         }
         public static void LoadWasm(string file)
         {

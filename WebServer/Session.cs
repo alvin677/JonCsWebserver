@@ -1,10 +1,26 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
+using System.Diagnostics.CodeAnalysis;
 
 namespace WebServer
 {
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Session
     {
         static Random random = new Random();
+        public static async Task<Dictionary<string, string>?> GetSess(HttpContext context)
+        {
+            _ = context.Request.Cookies.TryGetValue(Program.config.SessionCookieName, out string? sessID);
+            if (sessID == "") sessID = null;
+            Dictionary<string, string>? session = await GetSess(sessID);
+            if (session == null)
+            {
+                return session;
+            }
+            sessID = session["id"];
+            context.Response.Headers.SetCookie = Program.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path=/; SameSite=Lax; Expires=" + DateTime.UtcNow.AddDays(30);
+            return session;
+        }
         public static async Task<Dictionary<string,string>?> GetSess(string? id)
         {
             if (id == null)
