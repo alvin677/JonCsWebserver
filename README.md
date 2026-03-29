@@ -292,4 +292,15 @@ HTTP Serving 11.5KB html file
 Requests/sec: 165351.84
 Transfer/sec:      1.84GB
 ```
+HTTP Serving PHP
+```bash
+  12 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   103.77ms  201.05ms   2.00s    84.60%
+    Req/Sec     5.05k     4.22k   28.37k    84.96%
+  923144 requests in 20.04s, 4.29GB read
+  Socket errors: connect 0, read 0, write 0, timeout 1102
+Requests/sec:  46055.04
+Transfer/sec:    218.95MB
+```
 </details>
