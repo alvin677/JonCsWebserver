@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -43,7 +44,7 @@ public class Program
                 "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.");
         }
         if (TestSess) {
-            Dictionary<string,string>? data = Session.GetSess("Test").Result;
+            Dictionary<string,string>? data = Session.GetSess(config.SessionCookieName).Result;
             if(data != null) _ = Session.SaveSess(data["id"], data);
         }
         LoadCerts(certPath);

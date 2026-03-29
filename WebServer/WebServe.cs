@@ -9,10 +9,12 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
+using Microsoft.Win32.SafeHandles;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -20,6 +22,7 @@ using System.Net.WebSockets;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Wasmtime;
@@ -176,23 +179,33 @@ namespace WebServer
 
                          if (_Handler != null)
                          {
-                             int dotIndex = FileToUse.LastIndexOf('.');
-                             string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
                              for (int i = 0; i < defaultHeaderCount; i++)
                              {
                                  context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i]; // perhaps not necessary in 404NotFound?
                              }
-                             if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                             int dotIndex = FileToUse.LastIndexOf('.');
+                             //string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
+                             if (dotIndex >= 0)
                              {
-                                 for (int i = 0; i < ctype.Length; i += 2)
+                                 string Ext = FileToUse[(dotIndex + 1)..];
+                                 if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                                  {
-                                     context.Response.Headers[ctype[i]] = ctype[i + 1];
+                                     for (int i = 0; i < ctype.Length; i += 2)
+                                     {
+                                         context.Response.Headers[ctype[i]] = ctype[i + 1];
+                                     }
                                  }
                              }
                              await _Handler(context, FileToUse);
                              return;
                          }
                      }
+//#if DEBUG
+                     catch (Exception e)
+                     {
+                         Console.WriteLine(e);
+                     }
+//#endif
                      finally
                      {
                          ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
@@ -240,6 +253,11 @@ namespace WebServer
             defaultHeaderCount = defaultHeaderKeys.Length;
 
             foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
+            if (Program.config.Enable_PHP)
+            {
+                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+            }
+
             httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
@@ -251,12 +269,14 @@ namespace WebServer
             else handler.ServerCertificateCustomValidationCallback = null;
 
             string customLibPath = Path.Combine(AppContext.BaseDirectory, "deps");
+            CSScript.GlobalSettings.AddSearchDir(customLibPath);
+            /*
             try
             {
                 CSScript.RoslynEvaluator.Reset(true);
                 CSScript.EvaluatorConfig.ReferenceDomainAssemblies = false;
                 CSScript.Evaluator.DisableReferencingFromCode = true;
-                
+
                 foreach (string dll in Directory.GetFiles(customLibPath, "*.dll"))
                 {
                     try
@@ -270,12 +290,9 @@ namespace WebServer
                 CSScript.GlobalSettings.AddSearchDir(customLibPath);
                 CSScript.Evaluator.ReferenceAssembly("System");
             }
-            catch (Exception e) { Console.WriteLine(e.Message); Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath); }
-
-            if (Program.config.Enable_PHP)
-            {
-                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
-            }
+            catch (Exception e) { Console.WriteLine(e.Message); }
+            */
+            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
         }
         public static List<string> GetDomainBasedPath(HttpContext context)
         {
@@ -343,23 +360,23 @@ namespace WebServer
 
             return hash;
         }
-
         private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
         {
             const int bufferSize = 8192; // 8KB chunks
             System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
 
-            await using FileStream fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
-            fileStream.Seek(start, SeekOrigin.Begin);
+            using SafeFileHandle handle = File.OpenHandle(file, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.Asynchronous);
 
+            long offset = start;
             long remaining = length;
             while (remaining > 0)
             {
                 var memory = bodyWriter.GetMemory((int)Math.Min(bufferSize, remaining));
-                int bytesRead = await fileStream.ReadAsync(memory);
+                int bytesRead = await RandomAccess.ReadAsync(handle, memory, offset);
                 if (bytesRead == 0) break; // End of file
 
                 bodyWriter.Advance(bytesRead);
+                offset += bytesRead;
                 remaining -= bytesRead;
 
                 var flushResult = await bodyWriter.FlushAsync();
@@ -394,16 +411,19 @@ namespace WebServer
             if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
                 context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
-                if (long.TryParse(context.Request.Headers.IfModifiedSince, out long LM))
+                if (DateTimeOffset.TryParseExact(
+                    context.Request.Headers.IfModifiedSince,
+                    "R",                          // RFC1123, e.g. "Mon, 10 Nov 2025 14:16:20 GMT"
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out DateTimeOffset ifModifiedSince))
                 {
-                    if (LastMod[0] <= LM)
+                    if (LastMod[0] <= ifModifiedSince.ToUnixTimeSeconds())
                     {
                         context.Response.StatusCode = 304;
                         return;
                     }
                 }
-                context.Response.ContentLength = LastMod[1];
-                //long end = (LastMod[1] > 10485760 && !context.Request.Headers.UserAgent.ToString().Contains("Jon_Android") ? Math.Min(start + 8388608 - 1, LastMod[1] - 1) : LastMod[1] - 1);
                 if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
                 {
                     string range = rangeHeader.ToString();
@@ -419,57 +439,29 @@ namespace WebServer
                             return;
                         }
                         long contentLength = end - start + 1;
-                        if (contentLength != LastMod[1])
+                        if (contentLength != LastMod[1]) // only chunk if not requesting whole file
                         {
                             context.Response.StatusCode = StatusCodes.Status206PartialContent;
-                            string protocol = context.Request.Protocol;
-
-                            if (protocol == "HTTP/1.1")
-                            {
-                                context.Response.Headers.Remove("Content-Length");
-                                context.Response.Headers["Transfer-Encoding"] = "chunked";
-                                if (context.Request.Method == HttpMethods.Head) return;
-                                // Use Chunked Transfer Encoding
-                                await StreamFileChunked(context, file, start, contentLength);
-                            }
-                            else
-                            {
-                                context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
-                                context.Response.ContentLength = contentLength;
-                                if (context.Request.Method == HttpMethods.Head) return;
-                                await StreamFileUsingBodyWriter(context, file, start, contentLength);
-                            }
+                            context.Response.ContentLength = contentLength;
+                            context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
+                            if (context.Request.Method == HttpMethods.Head) return;
+                            await StreamFileUsingBodyWriter(context, file, start, contentLength);
                             return;
                         }
                     }
                 }
+                context.Response.ContentLength = LastMod[1];
             }
             if (context.Request.Method == HttpMethods.Head) return;
-
             await context.Response.SendFileAsync(file);
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
-            /*if (FileIndex.TryGetValue(file, out long[]? LastMod))
-            {
-                context.Response.Headers["last-modified"] = DateTimeOffset.FromUnixTimeSeconds(LastMod[0]).ToString("R");
-                context.Response.ContentLength = LastMod[1];
-                if (long.TryParse(context.Request.Headers.IfModifiedSince, out long LM))
-                {
-                    if (LastMod[0] <= LM)
-                    {
-                        context.Response.StatusCode = 304;
-                        return;
-                    }
-                }
-            }*/
             string fn = "undefined";
             string[] pa = file.Split("/");
             if (pa.Length > 0) fn = pa[pa.Length - 1];
             context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
             await DefHandle(context, file);
-            /*if (context.Request.Method == HttpMethods.Options) return;
-            await context.Response.SendFileAsync(file);*/
         }
         private static HttpClientHandler handler = new HttpClientHandler {
             UseCookies = false
@@ -621,7 +613,7 @@ namespace WebServer
                 context.Response.StatusCode = 500;
                 context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
-                _ = Console.Error.WriteLineAsync(e.Message);
+                Console.Error.WriteLine(e.Message);
                 return;
             }
         }
@@ -941,13 +933,26 @@ namespace WebServer
 
         public static void LoadCompiledFunc(string file)
         {
-            if (LiveAssemblies.TryGetValue(file[..^3], out HotReloadContext? ctx))
+            string toFile = file[..^3];
+            // Clear old Assembly from mem
+            if (LiveAssemblies.TryGetValue(toFile, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
-                LiveAssemblies.Remove(file[..^3]);
+                LiveAssemblies.Remove(toFile);
+                /*
+                FileLead.Remove(toFile, out _); // did not help
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                */
             }
-            HotReloadContext context = new HotReloadContext();
-            Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(file));
+            string fullPath = Path.GetFullPath(file);
+            HotReloadContext context = new HotReloadContext(fullPath);
+            /*foreach (var dll in Directory.GetFiles("libs", "*.dll"))
+            {
+                context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+            }*/
+            Assembly assembly = context.LoadFromAssemblyPath(fullPath);
             Type? type = assembly.GetType("Is_CsScript");
             if (type == null)
             {
@@ -966,8 +971,8 @@ namespace WebServer
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[file[..^3]] = func; // ._csdll -> ._cs
-            LiveAssemblies[file[..^3]] = context;
+            FileLead[toFile] = func; // ._csdll -> ._cs
+            LiveAssemblies[toFile] = context;
         }
         public static void LoadWasm(string file)
         {

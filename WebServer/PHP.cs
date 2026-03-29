@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using WebServer;
 
@@ -124,10 +125,11 @@ public class FastCGIClient
         await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ushort GetRequestId()
     {
-        requestId++;
-        return requestId == 0 ? ++requestId : requestId;
+        ushort id = ++requestId;
+        return id != 0 ? id : ++requestId;
     }
 
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env)
@@ -158,14 +160,15 @@ public class FastCGIClient
         // await fastCgiStream.WriteAsync(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
 
         // PARAMS
-        var paramData = new List<byte>();
+        byte[] paramBuf = ArrayPool<byte>.Shared.Rent(MinParamBufferSize);
+        int paramLen = 0;
         foreach (var kv in env)
-            paramData.AddRange(EncodeNameValuePair(kv.Key, kv.Value));
-        //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, (ushort)paramData.Count));
-        //await fastCgiStream.WriteAsync(paramData.ToArray());
+            paramLen += EncodeNameValuePair(kv.Key, kv.Value, paramBuf.AsSpan(paramLen));
 
-        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramData.ToArray());
+        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramBuf.AsMemory(0, paramLen));
         await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, ReadOnlyMemory<byte>.Empty); // Empty PARAMS
+
+        ArrayPool<byte>.Shared.Return(paramBuf);
 
         // Empty PARAMS
         //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
@@ -275,8 +278,8 @@ public class FastCGIClient
                         break;
 
                     case FastCGIConstants.STDERR:
-                        var err = Encoding.UTF8.GetString(content);
-                        Console.Error.WriteLine("[PHP STDERR] " + err);
+                        // var err = Encoding.UTF8.GetString(content);
+                        // _ = Console.Error.WriteLineAsync("[PHP STDERR] " + err);
                         break;
 
                     case FastCGIConstants.END_REQUEST:
@@ -354,7 +357,33 @@ public class FastCGIClient
             0x00 // reserved
         };
     }
+    private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int EncodeLength(int len, Span<byte> dest)
+    {
+        if (len < 128)
+        {
+            dest[0] = (byte)len;
+            return 1;
+        }
+        dest[0] = (byte)((len >> 24) | 0x80);
+        dest[1] = (byte)(len >> 16);
+        dest[2] = (byte)(len >> 8);
+        dest[3] = (byte)len;
+        return 4;
+    }
+    private static int EncodeNameValuePair(string name, string value, Span<byte> dest)
+    {
+        int nameLen = Encoding.UTF8.GetByteCount(name);
+        int valueLen = Encoding.UTF8.GetByteCount(value);
 
+        int pos = 0;
+        pos += EncodeLength(nameLen, dest[pos..]);
+        pos += EncodeLength(valueLen, dest[pos..]);
+        pos += Encoding.UTF8.GetBytes(name, dest[pos..]);
+        pos += Encoding.UTF8.GetBytes(value, dest[pos..]);
+        return pos;
+    }
     private static IEnumerable<byte> EncodeNameValuePair(string name, string value)
     {
         var nameBytes = Encoding.UTF8.GetBytes(name);
@@ -401,6 +430,7 @@ public class FastCGIClient
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, int length)
     {
         int offset = 0;

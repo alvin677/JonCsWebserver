@@ -1,10 +1,12 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
 
 namespace WebServer
 {
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Config
     {
         public bool Enable_PHP { get; set; }

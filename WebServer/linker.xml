@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="WebServer" preserve="all"/>
+  <assembly fullname="System.Runtime" preserve="all"/>
+  <assembly fullname="Wasmtime.Dotnet" preserve="all"/>
+  <assembly fullname="Microsoft.AspNetCore.Http" preserve="all"/>
+  <assembly fullname="Microsoft.AspNetCore.Http.Abstractions" preserve="all"/>
+</linker>
