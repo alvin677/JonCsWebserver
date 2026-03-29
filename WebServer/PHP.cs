@@ -23,6 +23,7 @@ public static class FastCGIConstants
 public class FastCGIClient
 {
     private ushort requestId = 0;
+    private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     //private readonly int _port;
     //private readonly string _host;
     public ConnectionInfo connect;
@@ -82,10 +83,16 @@ public class FastCGIClient
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
         }
-        string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
+        // Better — span-based, zero allocation
+        var relative = path.AsSpan(Program.BackendDir.Length).TrimStart('/');
+        int slash = relative.IndexOf('/');
+        var firstSegment = slash < 0 ? relative : relative[..slash];
+        string docRoot = Path.Combine(Program.BackendDir, firstSegment.ToString());
+        //string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
         string reqpath = path.Substring(docRoot.Length); // takes the file's path and slices to after the docRoot, so /var/www/examplecom/test/index.php -> /test/index.php
         // ---- PARAMS
-        var env = new Dictionary<string, string>
+        int envCapacity = 18 + context.Request.Headers.Count;
+        var env = new Dictionary<string, string>(envCapacity)
         {
             { "GATEWAY_INTERFACE", "FastCGI/1.0" },
             { "REQUEST_METHOD", context.Request.Method },
@@ -113,7 +120,16 @@ public class FastCGIClient
         {
             var headerValue = header.Value.ToString();
             if (string.IsNullOrEmpty(headerValue)) continue;
-            var headerName = "HTTP_" + header.Key.ToUpper().Replace('-', '_');
+            var headerName = string.Create(5 + header.Key.Length, header.Key, static (span, key) =>
+            {
+                span[0] = 'H'; span[1] = 'T'; span[2] = 'T'; span[3] = 'P'; span[4] = '_';
+                for (int i = 0; i < key.Length; i++)
+                {
+                    char c = key[i];
+                    span[5 + i] = c == '-' ? '_' :
+                        (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
+                }
+            });
             env[headerName] = headerValue;
         }
 #if DEBUG
@@ -122,7 +138,7 @@ public class FastCGIClient
             Console.WriteLine("env " + item.Key + " = " + item.Value);
         }
 #endif
-        await ExecutePhpScriptAsyncStream(context, path, GetRequestId(), env);
+        await ExecutePhpScriptAsyncStream(context, GetRequestId(), env);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -131,8 +147,13 @@ public class FastCGIClient
         ushort id = ++requestId;
         return id != 0 ? id : ++requestId;
     }
-
-    public async Task ExecutePhpScriptAsyncStream(HttpContext context, string scriptFilename, ushort requestId, Dictionary<string, string> env)
+    // Static readonly — allocated once at startup, never again
+    private static readonly ReadOnlyMemory<byte> BeginRequestBody = new byte[]
+    {
+    0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN,
+    0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    public async Task ExecutePhpScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
     {
         // Try to get an existing connection from the pool
         if (!_connectionPool.TryDequeue(out TcpUnixClient? client) || !client.Connected)
@@ -154,136 +175,99 @@ public class FastCGIClient
         // --- Step 1: Prepare BEGIN + PARAMS ---
         IStreamWriter fastCgiStream = Program.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
 
-        // BEGIN_REQUEST
-        await SendRecord(fastCgiStream, FastCGIConstants.BEGIN_REQUEST, requestId, new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
-        // await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.BEGIN_REQUEST, requestId, 8));
-        // await fastCgiStream.WriteAsync(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
-
-        // PARAMS
+        // Rent all buffers upfront — single ArrayPool interaction block
         byte[] paramBuf = ArrayPool<byte>.Shared.Rent(MinParamBufferSize);
-        int paramLen = 0;
-        foreach (var kv in env)
-            paramLen += EncodeNameValuePair(kv.Key, kv.Value, paramBuf.AsSpan(paramLen));
+        byte[] contentBuf = ArrayPool<byte>.Shared.Rent(65535);
+        byte[] postBuf = ArrayPool<byte>.Shared.Rent(8192);
+        // 8-byte FCGI record header — stackalloc avoids any heap interaction
+        byte[] recordHeader = ArrayPool<byte>.Shared.Rent(8);
 
-        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramBuf.AsMemory(0, paramLen));
-        await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, ReadOnlyMemory<byte>.Empty); // Empty PARAMS
-
-        ArrayPool<byte>.Shared.Return(paramBuf);
-
-        // Empty PARAMS
-        //await fastCgiStream.WriteAsync(BuildHeader(FastCGIConstants.PARAMS, requestId, 0));
-
-        // --- Step 2: Send the setup ---
-        await fastCgiStream.FlushAsync(); // Only flush, wrapper handles the rest. Will use the stream var below since loading POST to memory would take a lot of RAM, which would be impractical.
-
-        // --- Step 2: Stream the body (POST data etc) ---
-        if (context.Request.Method != HttpMethods.Get &&
-            context.Request.Method != HttpMethods.Head &&
-            context.Request.Method != HttpMethods.Options)
-        {
-            //context.Request.EnableBuffering();
-            //context.Request.Body.Position = 0;
-
-            var tempBuffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = await context.Request.Body.ReadAsync(tempBuffer, 0, tempBuffer.Length)) > 0)
-            {
-                await SendRecord(stream, FastCGIConstants.STDIN, requestId, tempBuffer.AsMemory(0, bytesRead));
-                //await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, (ushort)bytesRead));
-                //await stream.WriteAsync(tempBuffer.AsMemory(0, bytesRead));
-            }
-            await stream.FlushAsync();
-        }
-
-        // Final empty STDIN
-        await SendRecord(stream, FastCGIConstants.STDIN, requestId, ReadOnlyMemory<byte>.Empty);
-        //await stream.WriteAsync(BuildHeader(FastCGIConstants.STDIN, requestId, 0));
-        await stream.FlushAsync(); // ensure all data is sent.
-
-        // --- Step 3: Read FastCGI Response ---
         try
         {
+            // STEP 1: BEGIN_REQUEST
+            await SendRecord(fastCgiStream, FastCGIConstants.BEGIN_REQUEST, requestId, BeginRequestBody);
+            // await fastCgiStream.WriteAsync(new byte[] { 0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN, 0x00, 0x00, 0x00, 0x00, 0x00 });
+
+            // STEP 2: PARAMS
+            int paramLen = 0;
+            foreach (var kv in env)
+                paramLen += EncodeNameValuePair(kv.Key, kv.Value, paramBuf.AsSpan(paramLen));
+
+            await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, paramBuf.AsMemory(0, paramLen));
+            await SendRecord(fastCgiStream, FastCGIConstants.PARAMS, requestId, ReadOnlyMemory<byte>.Empty); // Empty PARAMS
+            await fastCgiStream.FlushAsync(); // Only flush, wrapper handles the rest. Will use the stream var below since loading POST to memory would take a lot of RAM, which would be impractical.
+
+            // --- Step 3: STDIN / Stream the body (POST data etc) ---
+            if (context.Request.Method != HttpMethods.Get &&
+                context.Request.Method != HttpMethods.Head &&
+                context.Request.Method != HttpMethods.Options)
+            {
+                int bytesRead;
+                while ((bytesRead = await context.Request.Body.ReadAsync(postBuf)) > 0)
+                    await SendRecord(stream, FastCGIConstants.STDIN, requestId, postBuf.AsMemory(0, bytesRead));
+                await stream.FlushAsync();
+            }
+
+            // Final empty STDIN
+            await SendRecord(stream, FastCGIConstants.STDIN, requestId, ReadOnlyMemory<byte>.Empty);
+            await stream.FlushAsync(); // ensure all data is sent.
+
+            // --- Step 4: Read FastCGI Response ---
             bool headersSent = false;
-            using var stdoutBuffer = new MemoryStream();
-            byte[] header = new byte[8];
+            var stdoutBuffer = new ArrayBufferWriter<byte>(4096);
             while (true)
             {
-                bool success = await ReadExactAsync(stream, header, 8);
+                if (!await ReadExactAsync(stream, recordHeader, 8)) break; // connection closed prematurely
+
+                byte type = recordHeader[1];
+                ushort contentLen = (ushort)((recordHeader[4] << 8) | recordHeader[5]);
+                byte paddingLen = recordHeader[6];
 
 #if DEBUG
-                Console.WriteLine("Received CGI header of size: " + header.Length.ToString());
+                Console.WriteLine($"header[4]={recordHeader[4]}, header[5]={recordHeader[5]}, contentLen={contentLen}");
 #endif
-                if (!success) break; // connection closed prematurely
-
-                byte type = header[1];
-                ushort contentLength = (ushort)((header[4] << 8) | header[5]);
-#if DEBUG
-                Console.WriteLine("Based of header[4] (" + header[4] + ") and header[5] (" + header[5] + "), contentLength = " + contentLength.ToString());
-#endif
-                byte paddingLength = header[6];
-
-                byte[] content = contentLength > 0 ? await ReadExactAsync(stream, contentLength) : Array.Empty<byte>();
-                if (paddingLength > 0)
-                    await ReadExactAsync(stream, paddingLength); // skip padding
+                if (contentLen > 0 && !await ReadExactAsync(stream, contentBuf, contentLen)) break;
+                if (paddingLen > 0) await ReadExactAsync(stream, PaddingSkipBuf, paddingLen); // skip padding
 
                 switch (type)
                 {
                     case FastCGIConstants.STDOUT:
 #if DEBUG
-                        Console.WriteLine("FastCGI STDOUT length: " + content.Length.ToString());
-                        Console.WriteLine("FastCGI STDOUT byte[] content = " + content);
+                        Console.WriteLine($"FastCGI STDOUT length: {contentLen}");
 #endif
-                        if (content.Length == 0) continue;
+                        if (contentLen == 0) continue;
 
                         if (!headersSent)
                         {
-                            stdoutBuffer.Write(content, 0, content.Length);
-                            var headerBytes = stdoutBuffer.GetBuffer();
-                            int headerEnd = FindDoubleCRLF(headerBytes.AsSpan(0, (int) stdoutBuffer.Length));
+                            stdoutBuffer.Write(contentBuf.AsSpan(0, contentLen));
+                            var written = stdoutBuffer.WrittenSpan;
+                            int headerEnd = FindDoubleCRLF(written);
 
                             if (headerEnd != -1)
                             {
-                                var headersPart = Encoding.UTF8.GetString(headerBytes, 0, headerEnd);
-                                var lines = headersPart.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-                                foreach (var line in lines)
-                                {
-                                    var separatorIndex = line.IndexOf(':');
-                                    if (separatorIndex > 0)
-                                    {
-                                        var key = line[..separatorIndex].Trim();
-                                        var value = line[(separatorIndex + 1)..].Trim();
-
-                                        if (string.Equals(key, "Status", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            if (int.TryParse(value.Split(' ')[0], out int statusCode))
-                                                context.Response.StatusCode = statusCode;
-                                        }
-                                        else
-                                        {
-                                            context.Response.Headers[key] = value;
-                                        }
-                                    }
-                                }
-
+                                ParseAndApplyHeaders(written[..headerEnd], context);
                                 headersSent = true;
-                                var bodyStart = headerEnd + 4;
-                                if (bodyStart < headerBytes.Length)
-                                    await context.Response.Body.WriteAsync(headerBytes.AsMemory(bodyStart, headerBytes.Length - bodyStart));
+
+                                int bodyStart = headerEnd + 4;
+                                if (bodyStart < written.Length)
+                                    await context.Response.Body.WriteAsync(
+                                        stdoutBuffer.WrittenMemory[bodyStart..]);
                             }
                         }
                         else
                         {
-                            await context.Response.Body.WriteAsync(content.AsMemory(0, content.Length));
+                            await context.Response.Body.WriteAsync(contentBuf.AsMemory(0, contentLen));
                         }
                         break;
 
                     case FastCGIConstants.STDERR:
-                        // var err = Encoding.UTF8.GetString(content);
-                        // _ = Console.Error.WriteLineAsync("[PHP STDERR] " + err);
+#if DEBUG
+                        Console.Error.WriteLine("[PHP STDERR] " + Encoding.UTF8.GetString(contentBuf, 0, contentLen));
+#endif
                         break;
 
                     case FastCGIConstants.END_REQUEST:
-                        _ = context.Response.CompleteAsync();
+                        await context.Response.CompleteAsync();
                         return;
                 }
             }
@@ -299,6 +283,10 @@ public class FastCGIClient
         }
         finally
         {
+            ArrayPool<byte>.Shared.Return(paramBuf);
+            ArrayPool<byte>.Shared.Return(contentBuf);
+            ArrayPool<byte>.Shared.Return(postBuf);
+            ArrayPool<byte>.Shared.Return(recordHeader);
             // Return TcpClient to pool
             if (_connectionPool.Count < Program.config.PHP_MaxPoolSize && client.Connected)
             {
@@ -317,47 +305,102 @@ public class FastCGIClient
             }
         }
     }
+    // Extracted to keep the hot loop clean — parses PHP-FPM response headers directly from span
+    private static void ParseAndApplyHeaders(ReadOnlySpan<byte> headerSpan, HttpContext context)
+    {
+        int lineStart = 0;
+        while (lineStart < headerSpan.Length)
+        {
+            var remaining = headerSpan[lineStart..];
+            int lineEnd = remaining.IndexOf((byte)'\n');
+            var line = lineEnd < 0 ? remaining : remaining[..lineEnd];
 
+            // Trim \r
+            if (line.Length > 0 && line[^1] == '\r') line = line[..^1];
+
+            int sep = line.IndexOf((byte)':');
+            if (sep > 0)
+            {
+                // Decode key/value only — unavoidable string alloc for ASP.NET header API
+                var key = Encoding.UTF8.GetString(line[..sep]).Trim();
+                var value = Encoding.UTF8.GetString(line[(sep + 1)..]).Trim();
+
+                if (string.Equals(key, "Status", StringComparison.OrdinalIgnoreCase))
+                {
+                    int spaceIdx = value.IndexOf(' ');
+                    if (int.TryParse(spaceIdx > 0 ? value[..spaceIdx] : value, out int code))
+                        context.Response.StatusCode = code;
+                }
+                else
+                {
+                    context.Response.Headers[key] = value;
+                }
+            }
+
+            lineStart += (lineEnd < 0 ? remaining.Length : lineEnd + 1);
+        }
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, int length)
+    {
+        int offset = 0;
+        while (offset < length)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(offset, length - offset));
+            if (read == 0) return false;
+            offset += read;
+        }
+        return true;
+    }
+
+    private static readonly byte[] ZeroPadding = new byte[8]; // SendRecord: write padding out
+    private static readonly byte[] PaddingSkipBuf = new byte[8]; // ReadExactAsync: discard incoming padding
     private static async Task SendRecord(Stream stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
     {
         ushort contentLength = (ushort)content.Length;
         byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
-        byte[] header = BuildHeader(type, requestId, contentLength, paddingLength);
 
-        await stream.WriteAsync(header);
+        byte[] headerBuf = ArrayPool<byte>.Shared.Rent(8);
+        headerBuf[0] = FastCGIConstants.VERSION;
+        headerBuf[1] = type;
+        headerBuf[2] = (byte)(requestId >> 8);
+        headerBuf[3] = (byte)(requestId & 0xFF);
+        headerBuf[4] = (byte)(contentLength >> 8);
+        headerBuf[5] = (byte)(contentLength & 0xFF);
+        headerBuf[6] = paddingLength;
+        headerBuf[7] = 0x00;
+
+        await stream.WriteAsync(headerBuf.AsMemory(0, 8));
+        ArrayPool<byte>.Shared.Return(headerBuf);
+
         if (contentLength > 0)
             await stream.WriteAsync(content);
         if (paddingLength > 0)
-            await stream.WriteAsync(new byte[paddingLength]);
+            await stream.WriteAsync(ZeroPadding.AsMemory(0, paddingLength));
     }
     private static async Task SendRecord(IStreamWriter stream, byte type, ushort requestId, ReadOnlyMemory<byte> content)
     {
         ushort contentLength = (ushort)content.Length;
         byte paddingLength = (byte)((8 - (contentLength % 8)) % 8);
-        var header = BuildHeader(type, requestId, contentLength, paddingLength);
 
-        await stream.WriteAsync(header);
+        byte[] headerBuf = ArrayPool<byte>.Shared.Rent(8);
+        headerBuf[0] = FastCGIConstants.VERSION;
+        headerBuf[1] = type;
+        headerBuf[2] = (byte)(requestId >> 8);
+        headerBuf[3] = (byte)(requestId & 0xFF);
+        headerBuf[4] = (byte)(contentLength >> 8);
+        headerBuf[5] = (byte)(contentLength & 0xFF);
+        headerBuf[6] = paddingLength;
+        headerBuf[7] = 0x00; // reserved
+
+        await stream.WriteAsync(headerBuf.AsMemory(0, 8));
+        ArrayPool<byte>.Shared.Return(headerBuf);
+
         if (contentLength > 0)
             await stream.WriteAsync(content);
         if (paddingLength > 0)
-            await stream.WriteAsync(new byte[paddingLength]);
+            await stream.WriteAsync(ZeroPadding.AsMemory(0, paddingLength));
     }
-    
-    private static byte[] BuildHeader(byte type, ushort requestId, ushort contentLength, byte paddingLength)
-    {
-        return new byte[]
-        {
-            FastCGIConstants.VERSION,
-            type,
-            (byte)(requestId >> 8),
-            (byte)(requestId & 0xFF),
-            (byte)(contentLength >> 8),
-            (byte)(contentLength & 0xFF),
-            paddingLength,
-            0x00 // reserved
-        };
-    }
-    private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int EncodeLength(int len, Span<byte> dest)
     {
@@ -384,94 +427,8 @@ public class FastCGIClient
         pos += Encoding.UTF8.GetBytes(value, dest[pos..]);
         return pos;
     }
-    private static IEnumerable<byte> EncodeNameValuePair(string name, string value)
-    {
-        var nameBytes = Encoding.UTF8.GetBytes(name);
-        var valueBytes = Encoding.UTF8.GetBytes(value);
 
-        var buffer = new List<byte>();
-
-        void EncodeLength(int len)
-        {
-            if (len < 128)
-            {
-                buffer.Add((byte)len);
-            }
-            else
-            {
-                buffer.Add((byte)((len >> 24) | 0x80));
-                buffer.Add((byte)(len >> 16));
-                buffer.Add((byte)(len >> 8));
-                buffer.Add((byte)(len));
-            }
-        }
-
-        EncodeLength(nameBytes.Length);
-        EncodeLength(valueBytes.Length);
-        buffer.AddRange(nameBytes);
-        buffer.AddRange(valueBytes);
-
-        return buffer;
-    }
-
-    private static async Task<byte[]> ReadExactAsync(Stream stream, int length)
-    {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        int offset = 0;
-        while (offset < length)
-        {
-            int bytesRead = await stream.ReadAsync(buffer, offset, length - offset);
-            if (bytesRead <= 0)
-                break;
-            offset += bytesRead;
-        }
-
-        var result = buffer.Take(offset).ToArray(); // Copy only used part
-        ArrayPool<byte>.Shared.Return(buffer);
-        return result;
-    }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, int length)
-    {
-        int offset = 0;
-        while (offset < length)
-        {
-            int read = await stream.ReadAsync(buffer, offset, length - offset);
-            if (read == 0)
-            {
-                // Connection closed before reading expected amount
-                return false;
-            }
-            offset += read;
-        }
-        return true;
-    }
-    public static async ValueTask<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, int size)
-    {
-        int totalRead = 0;
-        while (totalRead < size)
-        {
-            int read = await stream.ReadAsync(buffer.Slice(totalRead, size - totalRead));
-            if (read == 0)
-                return false; // Closed early
-            totalRead += read;
-        }
-        return true;
-    }
-
-    private int FindDoubleCRLF(Span<byte> data)
-    {
-        for (int i = 0; i < data.Length - 3; i++)
-        {
-            if (data[i] == '\r' && data[i + 1] == '\n' &&
-                data[i + 2] == '\r' && data[i + 3] == '\n')
-            {
-                return i;
-            }
-        }
-        return -1;
-    }
-    private int FindDoubleCRLF(byte[] data)
+    private static int FindDoubleCRLF(ReadOnlySpan<byte> data)
     {
         for (int i = 0; i < data.Length - 3; i++)
         {
