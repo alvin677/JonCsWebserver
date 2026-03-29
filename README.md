@@ -296,11 +296,10 @@ HTTP Serving PHP
 ```bash
   12 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   103.77ms  201.05ms   2.00s    84.60%
-    Req/Sec     5.05k     4.22k   28.37k    84.96%
-  923144 requests in 20.04s, 4.29GB read
-  Socket errors: connect 0, read 0, write 0, timeout 1102
-Requests/sec:  46055.04
-Transfer/sec:    218.95MB
+    Latency   623.44us    4.45ms 261.87ms   99.82%
+    Req/Sec     6.30k     6.03k   24.15k    88.17%
+  1129265 requests in 20.10s, 5.24GB read
+Requests/sec:  56189.62
+Transfer/sec:    267.13MB
 ```
 </details>
