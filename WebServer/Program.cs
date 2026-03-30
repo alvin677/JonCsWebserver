@@ -17,10 +17,14 @@ using WebServer;
 public class Program
 {
     public static bool act = true;
+    public static ulong totalRequests = 0;
+    public static ulong[] requestMetrics = new ulong[3]; // second, minute, hour
+    public static string[] wordMetrics = new string[3] { "second", "minute", "hour" };
     public static string WWWdir = "";
     public static string BackendDir = "/var/www";
     public static string LocalIP = IPFinder.GetLocalIPAddress();
     public static Config config = new Config();
+    public static CancellationTokenSource MetricsCts = new CancellationTokenSource();
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.OrdinalIgnoreCase);
     static X509Certificate2? fallbackCert = null;
     public static void Main(string[] args)
@@ -129,6 +133,7 @@ public class Program
                     case "statistics":
                     case "status":
                         {
+                            DisplayMetrics();
                             GetMemoryUsage();
                             GetCPUUsage();
                             break;
@@ -152,6 +157,8 @@ public class Program
                     case "shutdown":
                         {
                             Console.WriteLine("Shutting down..");
+                            MetricsCts.Cancel();
+                            MetricsCts.Dispose();
                             _ = web.StopAsync();
                             act = false;
                             break;
@@ -173,6 +180,7 @@ public class Program
             }
         });
         Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed.");
+        StartMetricsTimer();
         web.Run();
         Console.WriteLine("Press enter to exit..");
         Console.ReadLine();
@@ -197,7 +205,50 @@ public class Program
         var process = Process.GetCurrentProcess();
         Console.WriteLine($"Memory Usage: {process.WorkingSet64 / (1024 * 1024)} MB");
     }
+    private static ulong _lastSecond = 0, _lastMinute = 0, _lastHour = 0;
+    private static int _secondTick = 0, _minuteTick = 0;
+    public static void StartMetricsTimer()
+    {
+        if (!config.ServerMetrics) return;
+        _ = Task.Run(async () =>
+        {
+            Console.WriteLine("Metrics timer started.");
+            while (!MetricsCts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(1000, MetricsCts.Token).ConfigureAwait(false);
+                ulong current = Volatile.Read(ref totalRequests);
 
+                // per second
+                requestMetrics[0] = current - _lastSecond;
+                _lastSecond = current;
+
+                // per minute (every 60 ticks)
+                if (++_secondTick >= 60)
+                {
+                    requestMetrics[1] = current - _lastMinute;
+                    _lastMinute = current;
+                    _secondTick = 0;
+                }
+
+                // per hour (every 60 minute ticks)
+                if (++_minuteTick >= 3600)
+                {
+                    requestMetrics[2] = current - _lastHour;
+                    _lastHour = current;
+                    _minuteTick = 0;
+                }
+            }
+        });
+    }
+    public static void DisplayMetrics()
+    {
+        if (!config.ServerMetrics) return;
+        Console.WriteLine("Total since startup: " + totalRequests);
+        for (int i = 0; i < requestMetrics.Length; i++)
+        {
+            Console.WriteLine(requestMetrics[i] + " req/" + wordMetrics[i]);
+        }
+    }
     public static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
             .ConfigureWebHostDefaults(webBuilder =>
@@ -205,6 +256,13 @@ public class Program
                 webBuilder.ConfigureServices(services => {
                     services.AddResponseCompression(options =>
                     {
+                        /*
+                        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Except(new[]{
+                            "video/mp4", "video/webm", "audio/mpeg",
+                            "image/jpeg", "image/png", "image/webp", "image/gif"
+                        });
+                        */
+                        // options.ExcludedMimeTypes = new[] {"video/mp4", "video/webm", "audio/mpeg", "image/jpeg", "image/png", "image/webp", "image/gif"}; // this one exists
                         options.EnableForHttps = true;
                         options.Providers.Add<GzipCompressionProvider>();
                         options.Providers.Add<BrotliCompressionProvider>();
@@ -213,7 +271,7 @@ public class Program
 
                     services.Configure<GzipCompressionProviderOptions>(options =>
                     {
-                        options.Level = Program.config.CompressionLevel;
+                        options.Level = config.CompressionLevel;
                     });
                 });
                 webBuilder.ConfigureLogging(logging => {

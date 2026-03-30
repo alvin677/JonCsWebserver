@@ -9,6 +9,9 @@ namespace WebServer
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Config
     {
+        public bool Logging { get; set; }
+        public bool DebugPages { get; set; }
+        public bool ServerMetrics { get; set; }
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
@@ -17,9 +20,13 @@ namespace WebServer
         public long? MaxConcurrentConnections { get; set; }
         public long? MaxConcurrentUpgradedConnections { get; set; }
         public long? MaxRequestBodySize { get; set; }
+        public long RateLimitTime { get; set; }
         public double HttpProxyTimeout { get; set; }
         public double bytesPerSecond { get; set; }
         public int gracePeriod { get; set; }
+        public int RateLimitReq { get; set; }
+        public int RateLimitRefill { get; set; }
+        public int RateLimitQueue { get; set; }
         public int MaxFilePathLength { get; set; }
         public int FCGI_ReceiveTimeout { get; set; }
         public int FCGI_SendTimeout { get; set; }
@@ -104,6 +111,9 @@ namespace WebServer
         }
         public void LoadDefaults()
         {
+            Logging = false;
+            DebugPages = false;
+            ServerMetrics = false;
             Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
@@ -115,6 +125,10 @@ namespace WebServer
             HttpProxyTimeout = 300;
             bytesPerSecond = 240;
             gracePeriod = 5;
+            RateLimitTime = 1; // replenishment period in seconds (recommended: 1)
+            RateLimitReq = 0; // max tokens per IP (0 = disabled, recommended: 100-500 for public sites)
+            RateLimitRefill = 100; // tokens added per period (recommended: equal to or less than RateLimitReq)
+            RateLimitQueue = 0; // requests to queue when limit hit (0 = reject immediately)
             MaxFilePathLength = 1024;
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;

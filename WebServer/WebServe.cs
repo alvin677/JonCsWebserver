@@ -3,6 +3,8 @@ using CSScriptLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
@@ -25,6 +27,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading.RateLimiting;
 using Wasmtime;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -98,6 +101,31 @@ namespace WebServer
                 });
             }
             app.UseResponseCompression();
+            if (Program.config.Logging) app.UseHttpLogging();
+            if (Program.config.DebugPages) app.UseDeveloperExceptionPage();
+            if (Program.config.ServerMetrics)
+                app.Use(async (context, next) => {
+                    Interlocked.Increment(ref Program.totalRequests);
+                    await next(context);
+                });
+            if (Program.config.RateLimitReq != 0)
+            {
+                var rate = new RateLimiterOptions();
+                rate.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                rate.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                    RateLimitPartition.GetTokenBucketLimiter(
+                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new TokenBucketRateLimiterOptions
+                        {
+                            TokenLimit = Program.config.RateLimitReq,
+                            ReplenishmentPeriod = TimeSpan.FromSeconds(Program.config.RateLimitTime),
+                            TokensPerPeriod = Program.config.RateLimitRefill,
+                            AutoReplenishment = true,
+                            QueueLimit = Program.config.RateLimitQueue
+                        }));
+                app.UseRateLimiter(rate);
+            }
+            
             if (Program.BackendDir != "")
             {
                 app.UseWebSockets();
@@ -203,6 +231,9 @@ namespace WebServer
 //#if DEBUG
                      catch (Exception e)
                      {
+                         Console.WriteLine(context.Request.Path);
+                         Console.WriteLine(context.Request.Headers.Range);
+                         Console.WriteLine(string.Join("\n", context.Response.Headers.Select(h => h.Key + ": " + h.Value)));
                          Console.WriteLine(e);
                      }
 //#endif
@@ -362,7 +393,7 @@ namespace WebServer
         }
         private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
         {
-            const int bufferSize = 8192; // 8KB chunks
+            const int bufferSize = 16384; // 16 KB chunks
             System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
 
             using SafeFileHandle handle = File.OpenHandle(file, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.Asynchronous);
@@ -371,7 +402,8 @@ namespace WebServer
             long remaining = length;
             while (remaining > 0)
             {
-                var memory = bodyWriter.GetMemory((int)Math.Min(bufferSize, remaining));
+                int toRead = remaining > bufferSize ? bufferSize : (int)remaining;
+                var memory = bodyWriter.GetMemory(toRead).Slice(0, toRead);
                 int bytesRead = await RandomAccess.ReadAsync(handle, memory, offset);
                 if (bytesRead == 0) break; // End of file
 
@@ -383,7 +415,7 @@ namespace WebServer
                 if (flushResult.IsCanceled || flushResult.IsCompleted) break;
             }
 
-            await bodyWriter.CompleteAsync();
+            // await bodyWriter.CompleteAsync();
         }
         private static async Task StreamFileChunked(HttpContext context, string file, long start, long length)
         {
