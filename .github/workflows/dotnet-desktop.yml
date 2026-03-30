@@ -16,6 +16,12 @@ jobs:
           - rid: linux-x64
             output_name: WebServer.x86_64
             output_name_lite: WebServer_lite.x86_64
+          - rid: linux-x86
+            output_name: WebServer.x86
+            output_name_lite: WebServer_lite.x86
+          - rid: linux-arm
+            output_name: WebServer.arm
+            output_name_lite: WebServer_lite.arm
           - rid: linux-arm64
             output_name: WebServer.aarch64
             output_name_lite: WebServer_lite.aarch64
@@ -25,6 +31,12 @@ jobs:
           - rid: win-arm64
             output_name: WebServer_arm64.exe
             output_name_lite: WebServer_lite_arm64.exe
+          - rid: osx-x64
+            output_name: WebServer.osx-x64
+            output_name_lite: WebServer_lite.osx-x64
+          - rid: osx-arm64
+            output_name: WebServer.osx-arm64
+            output_name_lite: WebServer_lite.osx-arm64
 
     steps:
     - name: Checkout
