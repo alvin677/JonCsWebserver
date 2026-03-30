@@ -231,7 +231,7 @@ namespace WebServer
                              return;
                          }
                      }
-//#if DEBUG
+#if DEBUG
                      catch (Exception e)
                      {
                          Console.WriteLine(context.Request.Path);
@@ -239,7 +239,7 @@ namespace WebServer
                          Console.WriteLine(string.Join("\n", context.Response.Headers.Select(h => h.Key + ": " + h.Value)));
                          Console.WriteLine(e);
                      }
-//#endif
+#endif
                      finally
                      {
                          ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
