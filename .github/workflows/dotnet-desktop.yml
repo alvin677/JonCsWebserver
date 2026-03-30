@@ -16,18 +16,21 @@ jobs:
           - rid: linux-x64
             output_name: WebServer.x86_64
             output_name_lite: WebServer_lite.x86_64
-          - rid: linux-x86
-            output_name: WebServer.x86
-            output_name_lite: WebServer_lite.x86
           - rid: linux-arm
             output_name: WebServer.arm
             output_name_lite: WebServer_lite.arm
           - rid: linux-arm64
             output_name: WebServer.aarch64
             output_name_lite: WebServer_lite.aarch64
-          - rid: win-x64
+          - rid: win-x86
             output_name: WebServer.exe
             output_name_lite: WebServer_lite.exe
+          - rid: win-x64
+            output_name: WebServer64.exe
+            output_name_lite: WebServer64_lite.exe
+          - rid: win-arm
+            output_name: WebServer_arm.exe
+            output_name_lite: WebServer_lite_arm.exe
           - rid: win-arm64
             output_name: WebServer_arm64.exe
             output_name_lite: WebServer_lite_arm64.exe
