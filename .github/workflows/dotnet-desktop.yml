@@ -60,12 +60,12 @@ jobs:
         # Non-trimmed
         src_exe="./publish/${{ matrix.rid }}/WebServer"
         [ -f "${src_exe}.exe" ] && src_exe="${src_exe}.exe"
-        mv "$src_exe" "./publish/${{ matrix.rid }}/${{ matrix.output_name }}"
+        mv "$src_exe" "./publish/${{ matrix.rid }}/${{ matrix.output_name }}" || true
 
         # Trimmed
         src_lite="./publish/${{ matrix.rid }}_lite/WebServer"
         [ -f "${src_lite}.exe" ] && src_lite="${src_lite}.exe"
-        mv "$src_lite" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name_lite }}"
+        mv "$src_lite" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name_lite }}" || true
 
     - name: Upload ${{ matrix.rid }}
       uses: actions/upload-artifact@v4
