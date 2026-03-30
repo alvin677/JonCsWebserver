@@ -77,6 +77,9 @@ namespace WebServer
             {
                 options.Level = Program.config.CompressionLevel;
             });
+            if (Program.config.Logging) services.AddHttpLogging(options => { });
+            if (Program.config.RateLimitReq != 0)
+                services.AddRateLimiter(options => { });
         }
         public class DeflateCompressionProvider : ICompressionProvider
         {
