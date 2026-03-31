@@ -319,4 +319,24 @@ HTTP Serving PHP
 Requests/sec:  56189.62
 Transfer/sec:    267.13MB
 ```
+  ### [AMD Ryzen 5 5600X](https://www.amd.com/en/products/processors/desktops/ryzen/5000-series/amd-ryzen-5-5600x.html)	| ArchLinux (2026-03-31) | Tests done using `wrk`
+  Roughly 500% (~44%) CPU utilization (6 cores) (~300%, or ~25%, wrk usage)
+
+HTTP
+```
+  10 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.22ms    1.28ms  45.31ms   84.88%
+    Req/Sec    42.39k     3.26k   50.89k    70.07%
+  6341946 requests in 15.06s, 1.48GB read
+Requests/sec: 421237.96
+Transfer/sec:    100.43MB
+  10 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     2.12ms    1.18ms  63.11ms   83.98%
+    Req/Sec    44.18k     3.11k   61.96k    78.07%
+  6607394 requests in 15.06s, 1.54GB read
+Requests/sec: 438604.42
+Transfer/sec:    104.57MB
+```
 </details>
