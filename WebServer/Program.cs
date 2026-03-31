@@ -284,6 +284,8 @@ public class Program
                     options.Limits.MaxConcurrentUpgradedConnections = config.MaxConcurrentUpgradedConnections;
                     options.Limits.MinRequestBodyDataRate = config.MinRequestBodyDataRate;
                     options.Limits.MaxRequestBodySize = config.MaxRequestBodySize;
+                    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(config.KeepAliveTimeout); // 130
+                    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(config.RequestHeadersTimeout); // 30
                     //ThreadPool.SetMinThreads(1000, 1000);
 
                     options.ConfigureHttpsDefaults(adapterOptions =>

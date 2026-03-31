@@ -80,6 +80,7 @@ namespace WebServer
             if (Program.config.Logging) services.AddHttpLogging(options => { });
             if (Program.config.RateLimitReq != 0)
                 services.AddRateLimiter(options => { });
+            // services.AddRequestTimeouts(options => { });
         }
         public class DeflateCompressionProvider : ICompressionProvider
         {
@@ -103,7 +104,8 @@ namespace WebServer
                                                                                           //RequestPath = "/"
                 });
             }
-            app.UseResponseCompression();
+            if (Program.config.MaxBytesPerSecond != 0)
+                app.UseMiddleware<BandwidthLimiterMiddleware>();
             if (Program.config.Logging) app.UseHttpLogging();
             if (Program.config.DebugPages) app.UseDeveloperExceptionPage();
             if (Program.config.ServerMetrics)
@@ -128,7 +130,8 @@ namespace WebServer
                         }));
                 app.UseRateLimiter(rate);
             }
-            
+            app.UseResponseCompression();
+
             if (Program.BackendDir != "")
             {
                 app.UseWebSockets();
@@ -145,7 +148,7 @@ namespace WebServer
 #pragma warning restore CS8604 // Possible null reference argument.
                      ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
                      ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-                     ulong key = HashHostAndPath(_host, _path);
+                     ulong key = HashHostAndPath(_host, _path); // skip string concat
                      if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath))
                      {
                          context.Request.Path = new PathString(newPath);
