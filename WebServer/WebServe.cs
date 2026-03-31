@@ -181,7 +181,7 @@ namespace WebServer
                              if (segment == null) continue; // defensive
                              if (pos + segment.Length >= Program.config.MaxFilePathLength)
                              {
-                                 context.Response.StatusCode = 414;
+                                 context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
                                  // Console.WriteLine("pos: " + pos + " | segment: " + segment.Length.ToString() + " | max: " + Program.config.MaxFilePathLength.ToString());
                                  return; // cancel if too long
                              }
@@ -258,7 +258,7 @@ namespace WebServer
                          ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
                      }
 
-                     context.Response.StatusCode = 404;
+                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                      await context.Response.WriteAsync(error404);
                  });
              });
@@ -468,7 +468,7 @@ namespace WebServer
                 {
                     if (LastMod[0] <= ifModifiedSince.ToUnixTimeSeconds())
                     {
-                        context.Response.StatusCode = 304;
+                        context.Response.StatusCode = StatusCodes.Status304NotModified;
                         return;
                     }
                 }
@@ -576,7 +576,7 @@ namespace WebServer
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
                         client.Dispose();
                         webSocket.Abort();
-                        context.Response.StatusCode = 503;
+                        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                         return;
                     }
                     // context.Response.StatusCode = (int)client.HttpStatusCode;
@@ -658,7 +658,7 @@ namespace WebServer
             }
             catch (Exception e)
             {
-                context.Response.StatusCode = 500;
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
                 Console.Error.WriteLine(e.Message);
@@ -879,7 +879,7 @@ namespace WebServer
                 {
                     string errcontent = File.ReadAllText(tmpfile);
                     FileLead[Folder] = async (context, path) => {
-                        context.Response.StatusCode = 404;
+                        context.Response.StatusCode = StatusCodes.Status404NotFound;
                         await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
                     };
                 }
