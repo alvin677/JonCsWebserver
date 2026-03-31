@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebSockets;
@@ -48,13 +49,24 @@ namespace WebServer
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount > 14 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
+            MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
         };
         public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
 
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = new string[0];
         static string[] defaultHeaderValues = new string[0];
+        public class DeflateCompressionProvider : ICompressionProvider
+        {
+            public string EncodingName => "deflate";
+
+            public bool SupportsFlush => true;
+
+            public Stream CreateStream(Stream outputStream)
+            {
+                return new DeflateStream(outputStream, Program.config.CompressionLevel, leaveOpen: true);
+            }
+        }
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -80,20 +92,16 @@ namespace WebServer
             if (Program.config.Logging) services.AddHttpLogging(options => { });
             if (Program.config.RateLimitReq != 0)
                 services.AddRateLimiter(options => { });
-            // services.AddRequestTimeouts(options => { });
+            if(Program.config.RequestTimeout != 0)
+                services.AddRequestTimeouts(options =>
+                {
+                    options.DefaultPolicy = new RequestTimeoutPolicy
+                    {
+                        Timeout = TimeSpan.FromSeconds(Program.config.RequestTimeout),
+                        TimeoutStatusCode = StatusCodes.Status504GatewayTimeout
+                    };
+                });
         }
-        public class DeflateCompressionProvider : ICompressionProvider
-        {
-            public string EncodingName => "deflate";
-
-            public bool SupportsFlush => true;
-
-            public Stream CreateStream(Stream outputStream)
-            {
-                return new DeflateStream(outputStream, Program.config.CompressionLevel, leaveOpen: true);
-            }
-        }
-
         public void Configure(IApplicationBuilder app)
         {
             if (Program.WWWdir != "")
@@ -104,6 +112,8 @@ namespace WebServer
                                                                                           //RequestPath = "/"
                 });
             }
+            if (Program.config.RequestTimeout != 0) 
+                app.UseRequestTimeouts();
             if (Program.config.MaxBytesPerSecond != 0)
                 app.UseMiddleware<BandwidthLimiterMiddleware>();
             if (Program.config.Logging) app.UseHttpLogging();

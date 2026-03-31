@@ -22,6 +22,7 @@ namespace WebServer
         public long? MaxRequestBodySize { get; set; }
         public long RateLimitTime { get; set; }
         public long MaxBytesPerSecond { get; set; }
+        public long RequestTimeout { get; set; }
         public long KeepAliveTimeout { get; set; }
         public long RequestHeadersTimeout { get; set; }
         public double HttpProxyTimeout { get; set; }
@@ -131,6 +132,7 @@ namespace WebServer
             bytesPerSecond = 240;
             gracePeriod = 5;
             MaxBytesPerSecond = 0; // Maximum Bytes per second SENT to a RemoteAddress (per-IP)
+            RequestTimeout = 0; // How long a Request and Response combined can max take. Useful for stalled threads/requests.
             RateLimitTime = 1; // replenishment period in seconds (recommended: 1)
             RateLimitReq = 0; // max tokens per IP (0 = disabled, recommended: 100-500 for public sites)
             RateLimitRefill = 100; // tokens added per period (recommended: equal to or less than RateLimitReq)
