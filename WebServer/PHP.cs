@@ -28,7 +28,8 @@ public class FastCGIClient
     //private readonly string _host;
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
-    // private const int MaxPoolSize = Program.config.PHP_MaxPoolSize; // Adjust based on usage scenario
+    string LocalIP = IPFinder.GetLocalIPAddress();
+    // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
     /*public FastCGIClient(string host = "127.0.0.1", int port = 9000)
     {
         connect = ParseEndpoint(host + ":" + port.ToString());
@@ -78,17 +79,17 @@ public class FastCGIClient
 
     public async Task Run(HttpContext context, string path)
     {
-        if (Program.config.MaxRequestBodySize != null && context.Request.ContentLength > Program.config.MaxRequestBodySize)
+        if (Startup.config.MaxRequestBodySize != null && context.Request.ContentLength > Startup.config.MaxRequestBodySize)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
         }
         // Better — span-based, zero allocation
-        var relative = path.AsSpan(Program.BackendDir.Length).TrimStart('/');
+        var relative = path.AsSpan(Startup.BackendDir.Length).TrimStart('/');
         int slash = relative.IndexOf('/');
         var firstSegment = slash < 0 ? relative : relative[..slash];
-        string docRoot = Path.Combine(Program.BackendDir, firstSegment.ToString());
-        //string docRoot = Path.Combine(Program.BackendDir, path.Substring(Program.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
+        string docRoot = Path.Combine(Startup.BackendDir, firstSegment.ToString());
+        //string docRoot = Path.Combine(Startup.BackendDir, path.Substring(Startup.BackendDir.Length).TrimStart('/').Split("/")[0]); // /var/www/examplecom/test/index.php -> /var/www/examplecom
         string reqpath = path.Substring(docRoot.Length); // takes the file's path and slices to after the docRoot, so /var/www/examplecom/test/index.php -> /test/index.php
         // ---- PARAMS
         int envCapacity = 18 + context.Request.Headers.Count;
@@ -105,7 +106,7 @@ public class FastCGIClient
             { "SERVER_SOFTWARE", "JonCsWebServer" },
             { "REMOTE_ADDR", context.Connection.RemoteIpAddress != null ? context.Connection.RemoteIpAddress.ToString() : "127.0.0.1" },
             { "REMOTE_PORT", context.Connection.RemotePort.ToString() },
-            { "SERVER_ADDR", Program.LocalIP },
+            { "SERVER_ADDR", LocalIP },
             { "SERVER_PORT", context.Request.Host.Port.HasValue ? context.Request.Host.Port.Value.ToString() : "80" },
             { "SERVER_NAME", context.Request.Host.Host },
             { "SERVER_PROTOCOL", context.Request.Protocol },
@@ -163,8 +164,8 @@ public class FastCGIClient
 #if DEBUG
             Console.WriteLine("Connecting new TcpClient.");
 #endif
-            client.ReceiveTimeout = Program.config.FCGI_ReceiveTimeout;
-            client.SendTimeout = Program.config.FCGI_SendTimeout;
+            client.ReceiveTimeout = Startup.config.FCGI_ReceiveTimeout;
+            client.SendTimeout = Startup.config.FCGI_SendTimeout;
             //await client.ConnectAsync(_host, _port);
         }
 #if DEBUG
@@ -173,7 +174,7 @@ public class FastCGIClient
         var stream = client.Stream;
 
         // --- Step 1: Prepare BEGIN + PARAMS ---
-        IStreamWriter fastCgiStream = Program.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
+        IStreamWriter fastCgiStream = Startup.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
 
         // Rent all buffers upfront — single ArrayPool interaction block
         byte[] paramBuf = ArrayPool<byte>.Shared.Rent(MinParamBufferSize);
@@ -288,7 +289,7 @@ public class FastCGIClient
             ArrayPool<byte>.Shared.Return(postBuf);
             ArrayPool<byte>.Shared.Return(recordHeader);
             // Return TcpClient to pool
-            if (_connectionPool.Count < Program.config.PHP_MaxPoolSize && client.Connected)
+            if (_connectionPool.Count < Startup.config.PHP_MaxPoolSize && client.Connected)
             {
                 _connectionPool.Enqueue(client);
 #if DEBUG

@@ -40,13 +40,16 @@ namespace WebServer
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br /><img src=\"//jonhosting.com/JonHost.png\" /><br /><p>Maybe we're working on adding this page.</p>${0}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
+        public static string WWWdir = "";
+        public static string BackendDir = "/var/www";
+        public static Config config = new Config();
         public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Startup.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
@@ -66,7 +69,7 @@ namespace WebServer
 
             public Stream CreateStream(Stream outputStream)
             {
-                return new DeflateStream(outputStream, Program.config.CompressionLevel, leaveOpen: true);
+                return new DeflateStream(outputStream, Startup.config.CompressionLevel, leaveOpen: true);
             }
         }
 
@@ -74,7 +77,7 @@ namespace WebServer
         {
             services.AddRouting();
             services.AddWebSockets(config => {
-                config.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketTimeout);
+                config.KeepAliveInterval = TimeSpan.FromSeconds(Startup.config.WebSocketTimeout);
             });
             // services.AddSingleton<BackgroundTaskQueue>();
             // services.AddHostedService<Worker>();
@@ -89,43 +92,43 @@ namespace WebServer
 
             services.Configure<GzipCompressionProviderOptions>(options =>
             {
-                options.Level = Program.config.CompressionLevel;
+                options.Level = Startup.config.CompressionLevel;
             });
-            if (Program.config.Logging) services.AddHttpLogging(options => { });
-            if (Program.config.RateLimitReq != 0)
+            if (Startup.config.Logging) services.AddHttpLogging(options => { });
+            if (Startup.config.RateLimitReq != 0)
                 services.AddRateLimiter(options => { });
-            if(Program.config.RequestTimeout != 0)
+            if(Startup.config.RequestTimeout != 0)
                 services.AddRequestTimeouts(options =>
                 {
                     options.DefaultPolicy = new RequestTimeoutPolicy
                     {
-                        Timeout = TimeSpan.FromSeconds(Program.config.RequestTimeout),
+                        Timeout = TimeSpan.FromSeconds(Startup.config.RequestTimeout),
                         TimeoutStatusCode = StatusCodes.Status504GatewayTimeout
                     };
                 });
         }
         public void Configure(IApplicationBuilder app)
         {
-            if (Program.WWWdir != "")
+            if (WWWdir != "")
             {
                 app.UseStaticFiles(new StaticFileOptions
                 {
-                    FileProvider = new PhysicalFileProvider(Path.Combine(Program.WWWdir)) //,
+                    FileProvider = new PhysicalFileProvider(Path.Combine(WWWdir)) //,
                                                                                           //RequestPath = "/"
                 });
             }
-            if (Program.config.RequestTimeout != 0) 
+            if (config.RequestTimeout != 0) 
                 app.UseRequestTimeouts();
-            if (Program.config.MaxBytesPerSecond != 0)
+            if (config.MaxBytesPerSecond != 0)
                 app.UseMiddleware<BandwidthLimiterMiddleware>();
-            if (Program.config.Logging) app.UseHttpLogging();
-            if (Program.config.DebugPages) app.UseDeveloperExceptionPage();
-            if (Program.config.ServerMetrics)
+            if (config.Logging) app.UseHttpLogging();
+            if (config.DebugPages) app.UseDeveloperExceptionPage();
+            if (config.ServerMetrics)
                 app.Use(async (context, next) => {
                     Interlocked.Increment(ref Program.totalRequests);
                     await next(context);
                 });
-            if (Program.config.RateLimitReq != 0)
+            if (config.RateLimitReq != 0)
             {
                 var rate = new RateLimiterOptions();
                 rate.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -134,20 +137,21 @@ namespace WebServer
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                         _ => new TokenBucketRateLimiterOptions
                         {
-                            TokenLimit = Program.config.RateLimitReq,
-                            ReplenishmentPeriod = TimeSpan.FromSeconds(Program.config.RateLimitTime),
-                            TokensPerPeriod = Program.config.RateLimitRefill,
+                            TokenLimit = config.RateLimitReq,
+                            ReplenishmentPeriod = TimeSpan.FromSeconds(config.RateLimitTime),
+                            TokensPerPeriod = config.RateLimitRefill,
                             AutoReplenishment = true,
-                            QueueLimit = Program.config.RateLimitQueue
+                            QueueLimit = config.RateLimitQueue
                         }));
                 app.UseRateLimiter(rate);
             }
             app.UseResponseCompression();
 
-            if (Program.BackendDir != "")
+            if (BackendDir != "")
             {
-                if (!Program.BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
-                    Program.BackendDir += '/'; // avoid per-req addition
+                if (!BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
+                    BackendDir += '/'; // avoid per-req addition
+                ReadOnlyMemory<char> BackendDirMemory = BackendDir.AsMemory();
                 app.UseWebSockets();
                 app.UseRouting();
                 app.UseEndpoints(endpoints =>
@@ -156,28 +160,26 @@ namespace WebServer
                      {
 #pragma warning disable CS8604 // Possible null reference argument.
                          var hostValue = context.Request.Host.Value; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
-                         if (Program.config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
+                         if (Startup.config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
                          {
                              context.Request.Host = new HostString(OtherDomain);
                              hostValue = OtherDomain;
                          }
 #pragma warning restore CS8604 // Possible null reference argument.
                          ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
+                         ReadOnlySpan<char> hostSpan = ApplyDomainFilter(_host); // Optional domain filter
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                         // Optional domain filter — store string to keep span alive
-                         ReadOnlySpan<char> hostSpan = ApplyDomainFilter(_host);
-
                          // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (Program.config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
+                         if (Startup.config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
                          {
                              context.Request.Path = new PathString(newPath); // needed for C#-endpoints
                              _path = newPath.AsSpan(); // update the span used directly below
                          }
 
                          // Write BackendDir
-                         ReadOnlySpan<char> backendDir = Program.BackendDir.AsSpan();
-                         Span<char> buffer = stackalloc char[Program.config.MaxFilePathLength];
+                         ReadOnlySpan<char> backendDir = BackendDirMemory.Span; // BackendDir.AsSpan();
+                         Span<char> buffer = stackalloc char[config.MaxFilePathLength];
                          int pos = backendDir.Length + hostSpan.Length; // start pos after the two writes
                          if (pos >= buffer.Length) // only possible if someone uses a fake domain. Possible, though, so leave this here as a security feature.
                          {
@@ -187,7 +189,7 @@ namespace WebServer
                          backendDir.CopyTo(buffer);
                          hostSpan.CopyTo(buffer[backendDir.Length..]);
 
-                         Span<int> slashPositions = stackalloc int[Program.config.MaxDirDepth + 4];
+                         Span<int> slashPositions = stackalloc int[Startup.config.MaxDirDepth + 4];
                          int slashCount = 0;
 
                          // Write path segments
@@ -227,7 +229,7 @@ namespace WebServer
                          // Lookup
                          string fileKey = new string(buffer[..pos]);
 
-                         if (!FileLead.TryGetValue(fileKey, out var handler) && Program.config.LoopFindEndpoint) // only lose perf on misses?
+                         if (!FileLead.TryGetValue(fileKey, out var handler) && Startup.config.LoopFindEndpoint) // only lose perf on misses?
                          {
                              for (int s = slashCount - 1; s >= 0; s--)
                              {
@@ -250,7 +252,7 @@ namespace WebServer
                              if (dotIndex >= 0)
                              {
                                  string ext = fileKey[(dotIndex + 1)..];
-                                 if (Program.config.OptExtTypes.TryGetValue(ext, out string[]? ctype))
+                                 if (Startup.config.OptExtTypes.TryGetValue(ext, out string[]? ctype))
                                      for (int j = 0; j < ctype.Length; j += 2)
                                          context.Response.Headers[ctype[j]] = ctype[j + 1];
                              }
@@ -267,21 +269,21 @@ namespace WebServer
                 Reload();
                 Task.Run(() =>
                 {
-                    IndexFiles(Program.BackendDir);
-                    IndexDirectories(Program.BackendDir);
-                    IndexErrorPages(Program.BackendDir);
+                    IndexFiles(Startup.BackendDir);
+                    IndexDirectories(Startup.BackendDir);
+                    IndexErrorPages(Startup.BackendDir);
                 });
-                SetupFileWatcher(Program.BackendDir);
+                SetupFileWatcher(Startup.BackendDir);
             }
         }
 
         public void Reload()
         {
-            foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
+            foreach (KeyValuePair<string, string> ext in Startup.config.ForwardExt)
             {
                 Extensions[ext.Key] = (context, path) =>
                 {
-                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
+                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value!.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
                     return ForwardRequestTo(context, targetUrl);
                 };
             }
@@ -289,10 +291,10 @@ namespace WebServer
         }
         public static void Reload2()
         {
-            defaultHeaderKeys = new string[Program.config.DefaultHeaders.Count];
-            defaultHeaderValues = new string[Program.config.DefaultHeaders.Count];
+            defaultHeaderKeys = new string[Startup.config.DefaultHeaders.Count];
+            defaultHeaderValues = new string[Startup.config.DefaultHeaders.Count];
             int idx = 0;
-            foreach (var kv in Program.config.DefaultHeaders)
+            foreach (var kv in Startup.config.DefaultHeaders)
             {
                 defaultHeaderKeys[idx] = kv.Key;
                 defaultHeaderValues[idx] = kv.Value;
@@ -300,16 +302,16 @@ namespace WebServer
             }
             defaultHeaderCount = defaultHeaderKeys.Length;
 
-            foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            if (Program.config.Enable_PHP)
+            foreach (string ext in Startup.config.DownloadIfExtension) Extensions[ext] = DefDownload;
+            if (Startup.config.Enable_PHP)
             {
-                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+                FastCGI = new FastCGIClient(Startup.config.PHP_FPM); //.Split(":")[0], int.Parse(Startup.config.PHP_FPM.Split(":")[1]));
             }
 
-            httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
+            httpClient.Timeout = TimeSpan.FromSeconds(Startup.config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
-            if (!Program.config.ForceTLS)
+            if (!Startup.config.ForceTLS)
             {
                 handler.ServerCertificateCustomValidationCallback = IgnoreCert;
                 handler.CheckCertificateRevocationList = false;
@@ -342,16 +344,6 @@ namespace WebServer
             */
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
         }
-        public static List<string> GetDomainBasedPath(HttpContext context)
-        {
-            // Optionally, append the requested path if needed
-            string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
-            if (requestPath != null && requestPath.Contains("..")) requestPath = null;
-            List<string> fullPath = [Program.BackendDir, (Program.config.FilterFromDomain != "" ? context.Request.Host.Value.Split(':')[0].Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo) : context.Request.Host.Value.Split(':')[0])];
-            if (requestPath != null) fullPath.AddRange(requestPath);
-
-            return fullPath;
-        }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
@@ -362,10 +354,10 @@ namespace WebServer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ReadOnlySpan<char> ApplyDomainFilter(ReadOnlySpan<char> host)
         {
-            if (string.IsNullOrEmpty(Program.config.FilterFromDomain))
+            if (string.IsNullOrEmpty(Startup.config.FilterFromDomain))
                 return host;
 
-            var filtered = host.ToString().Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
+            var filtered = host.ToString().Replace(Startup.config.FilterFromDomain, Startup.config.DomainFilterTo);
             return filtered.AsSpan();
         }
 
@@ -508,7 +500,7 @@ namespace WebServer
         }
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
-            if (Program.config.MaxRequestBodySize != null && context.Request.ContentLength > Program.config.MaxRequestBodySize)
+            if (Startup.config.MaxRequestBodySize != null && context.Request.ContentLength > Startup.config.MaxRequestBodySize)
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
@@ -527,8 +519,8 @@ namespace WebServer
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
-                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
-                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
+                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
+                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
                     websockethandler.CookieContainer = new CookieContainer();
                     websockethandler.Credentials = client.Options.Credentials;
                     /*
@@ -540,7 +532,7 @@ namespace WebServer
                     client.Options.SetRequestHeader("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
                     
                     //client.Options.Cookies = new CookieContainer();
-                    string Domain = context.Request.Host.Value.Split(":")[0];
+                    string Domain = context.Request.Host.Value!.Split(":")[0];
                     context.Request.Cookies.ForEach((cookie) => {
                         Cookie cook = new Cookie(cookie.Key, cookie.Value);
                         try
@@ -556,7 +548,7 @@ namespace WebServer
                     {
                         HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
                         
-                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
+                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout)).Token);
                     }
                     catch(Exception){
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
@@ -711,7 +703,7 @@ namespace WebServer
         {
             string[] getExt = file.Split('.');
             string Ext = getExt[getExt.Length - 1];
-            if (Program.config.Enable_CS)
+            if (Startup.config.Enable_CS)
             {
                 if (Ext == "_cs")
                 {
@@ -724,7 +716,7 @@ namespace WebServer
                     return;
                 }
             }
-            if (Program.config.Enable_PHP)
+            if (Startup.config.Enable_PHP)
             {
                 if (Ext == "php")
                 {
@@ -740,7 +732,7 @@ namespace WebServer
                     return;
                 }
             }
-            if(Program.config.Enable_WASM)
+            if(Startup.config.Enable_WASM)
             {
                 if(Ext == "_wasm")
                 {
@@ -784,9 +776,9 @@ namespace WebServer
                     foreach(string symlink in Linked) // Update all files linking to this file
                     {
                         string target = symlink;
-                        if (target.StartsWith(Program.BackendDir))
+                        if (target.StartsWith(Startup.BackendDir))
                         {
-                            target = target.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+                            target = target.Substring(Startup.BackendDir.Length); // Resolve relative to the symlink's directory
                         }
                         CacheFileInfo(target); // Update metadata for the symlink
                     }
@@ -810,9 +802,9 @@ namespace WebServer
                 fileInfo = new FileInfo(target);
             }
             string realFile = fileInfo.FullName.Replace(Path.DirectorySeparatorChar, '/');
-            if (realFile.StartsWith(Program.BackendDir))
+            if (realFile.StartsWith(Startup.BackendDir))
             {
-                realFile = realFile.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+                realFile = realFile.Substring(Startup.BackendDir.Length); // Resolve relative to the symlink's directory
             }
             reverseSymlinkMap[realFile] = Symlinks;
             return fileInfo;
@@ -826,7 +818,7 @@ namespace WebServer
         public static void IndexDirectory(string Folder)
         {
             bool Any = false;
-            foreach (string File in Program.config.indexPriority)
+            foreach (string File in Startup.config.indexPriority)
             {
                 string tmpfile = Path.Combine(Folder, File).Replace(Path.DirectorySeparatorChar, '/');
                 if (FileLead.TryGetValue(tmpfile, out var Handler))
@@ -834,7 +826,7 @@ namespace WebServer
                     string[] getExt = tmpfile.Split('.');
                     string Ext = getExt[getExt.Length - 1];
                     
-                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                    if (Startup.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
                     {
                         FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
                     }else
@@ -925,7 +917,7 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-            if ((Program.config.Enable_CS && filePath.EndsWith("._csdll")) || (Program.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
+            if ((Startup.config.Enable_CS && filePath.EndsWith("._csdll")) || (Startup.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
             FileIndex.TryRemove(filePath, out _);
             FileLead.TryRemove(filePath, out _);
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))

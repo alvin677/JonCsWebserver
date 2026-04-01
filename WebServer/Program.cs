@@ -20,21 +20,21 @@ public class Program
     public static ulong totalRequests = 0;
     public static ulong[] requestMetrics = new ulong[3]; // second, minute, hour
     public static string[] wordMetrics = new string[3] { "second", "minute", "hour" };
-    public static string WWWdir = "";
-    public static string BackendDir = "/var/www";
-    public static string LocalIP = IPFinder.GetLocalIPAddress();
-    public static Config config = new Config();
+    // public static string WWWdir = "";
+    // public static string BackendDir = "/var/www";
+    // public static string LocalIP = IPFinder.GetLocalIPAddress();
+    // public static Config config = new Config();
     public static CancellationTokenSource MetricsCts = new CancellationTokenSource();
     static Dictionary<string, X509Certificate2> Certs = new Dictionary<string, X509Certificate2>(StringComparer.OrdinalIgnoreCase);
     static X509Certificate2? fallbackCert = null;
     public static void Main(string[] args)
     {
-        config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
-        config.FriendlyHeadersToOptimized();
-        config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
-        string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? config.CertDir;
-        WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? config.WWWdir;
-        BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? config.BackendDir;
+        Startup.config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+        Startup.config.FriendlyHeadersToOptimized();
+        Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
+        string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? Startup.config.CertDir;
+        Startup.WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? Startup.config.WWWdir;
+        Startup.BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? Startup.config.BackendDir;
         bool TestSess = args.FirstOrDefault(arg => arg.StartsWith("--testSess")) != null;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
         if(HelpCmd)
@@ -48,7 +48,7 @@ public class Program
                 "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.");
         }
         if (TestSess) {
-            Dictionary<string,string>? data = Session.GetSess(config.SessionCookieName).Result;
+            Dictionary<string,string>? data = Session.GetSess(Startup.config.SessionCookieName).Result;
             if(data != null) _ = Session.SaveSess(data["id"], data);
         }
         LoadCerts(certPath);
@@ -99,12 +99,12 @@ public class Program
                         }
                     case "indexfiles":
                         {
-                            string indx = BackendDir + String.Join(' ', Args.Skip(1));
+                            string indx = Startup.BackendDir + String.Join(' ', Args.Skip(1));
                             _ = Task.Run(()=>
                             {
                                 Startup.IndexFiles(indx);
                                 Startup.IndexDirectories(indx);
-                                Startup.IndexErrorPages(BackendDir);
+                                Startup.IndexErrorPages(Startup.BackendDir);
                                 Console.WriteLine("Indexed " + indx);
                             }); // prevent stalling + prevent crashing from invalid path
                             Console.WriteLine("Indexing " + indx);
@@ -147,9 +147,9 @@ public class Program
                         }
                     case "reload":
                         {
-                            config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
-                            config.FriendlyHeadersToOptimized();
-                            config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(config.gracePeriod));
+                            Startup.config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+                            Startup.config.FriendlyHeadersToOptimized();
+                            Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
                             _ = Task.Run(()=>Startup.Reload2());
                             Console.WriteLine("Reloaded!");
                             break;
@@ -209,7 +209,7 @@ public class Program
     private static int _secondTick = 0, _minuteTick = 0;
     public static void StartMetricsTimer()
     {
-        if (!config.ServerMetrics) return;
+        if (!Startup.config.ServerMetrics) return;
         _ = Task.Run(async () =>
         {
             Console.WriteLine("Metrics timer started.");
@@ -242,7 +242,7 @@ public class Program
     }
     public static void DisplayMetrics()
     {
-        if (!config.ServerMetrics) return;
+        if (!Startup.config.ServerMetrics) return;
         Console.WriteLine("Total since startup: " + totalRequests);
         for (int i = 0; i < requestMetrics.Length; i++)
         {
@@ -271,7 +271,7 @@ public class Program
 
                     services.Configure<GzipCompressionProviderOptions>(options =>
                     {
-                        options.Level = config.CompressionLevel;
+                        options.Level = Startup.config.CompressionLevel;
                     });
                 });
                 webBuilder.ConfigureLogging(logging => {
@@ -280,12 +280,12 @@ public class Program
                 webBuilder.ConfigureKestrel((context, options) =>
                 {
                     options.AddServerHeader = false;
-                    options.Limits.MaxConcurrentConnections = config.MaxConcurrentConnections;
-                    options.Limits.MaxConcurrentUpgradedConnections = config.MaxConcurrentUpgradedConnections;
-                    options.Limits.MinRequestBodyDataRate = config.MinRequestBodyDataRate;
-                    options.Limits.MaxRequestBodySize = config.MaxRequestBodySize;
-                    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(config.KeepAliveTimeout); // 130
-                    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(config.RequestHeadersTimeout); // 30
+                    options.Limits.MaxConcurrentConnections = Startup.config.MaxConcurrentConnections;
+                    options.Limits.MaxConcurrentUpgradedConnections = Startup.config.MaxConcurrentUpgradedConnections;
+                    options.Limits.MinRequestBodyDataRate = Startup.config.MinRequestBodyDataRate;
+                    options.Limits.MaxRequestBodySize = Startup.config.MaxRequestBodySize;
+                    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(Startup.config.KeepAliveTimeout); // 130
+                    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(Startup.config.RequestHeadersTimeout); // 30
                     //ThreadPool.SetMinThreads(1000, 1000);
 
                     options.ConfigureHttpsDefaults(adapterOptions =>
@@ -302,8 +302,8 @@ public class Program
                     catch (Exception ex) {
                         Console.WriteLine(ex.ToString());
                     }
-                    List<ushort> HttpPorts = new List<ushort>(config.HttpPorts);
-                    List<ushort> HttpsPorts = new List<ushort>(config.HttpsPorts);
+                    List<ushort> HttpPorts = new List<ushort>(Startup.config.HttpPorts);
+                    List<ushort> HttpsPorts = new List<ushort>(Startup.config.HttpsPorts);
                     try { 
                         string? InHttpPort = args.FirstOrDefault(arg => arg.StartsWith("--httpPort"))?.Split("=")[1];
                         if (InHttpPort != null)
@@ -350,7 +350,7 @@ public class Program
                         listenOptions.UseHttps(httpsOptions => {
                             httpsOptions.ServerCertificateSelector = (features, name) =>
                             {
-                                if (Certs.TryGetValue(name, out X509Certificate2? Cert))
+                                if (Certs.TryGetValue(name!, out X509Certificate2? Cert))
                                     return Cert;
                                 return fallbackCert;
                             };
