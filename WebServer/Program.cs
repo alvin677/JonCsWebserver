@@ -156,7 +156,7 @@ public class Program
                         }
                     case "shutdown":
                         {
-                            Console.WriteLine("Shutting down..");
+                            Console.WriteLine("Shutting down JonCsWebServer..");
                             MetricsCts.Cancel();
                             MetricsCts.Dispose();
                             _ = web.StopAsync();
