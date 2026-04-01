@@ -158,10 +158,11 @@ namespace WebServer
 #pragma warning restore CS8604 // Possible null reference argument.
                      ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
                      ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-                     ulong key = HashHostAndPath(_host, _path); // skip string concat
-                     if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath))
+                     ulong key = HashHostAndPath(_host, _path); // skip string concat // did indeed forget to trim port
+                     if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath)) // rarely true. Only if webadmin has added values
                      {
-                         context.Request.Path = new PathString(newPath);
+                         context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                         _path = newPath.AsSpan();
                      }
 
                      string[] pathBuffer = ArrayPool<string>.Shared.Rent(Program.config.MaxDirDepth + 2);
