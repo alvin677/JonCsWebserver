@@ -139,7 +139,7 @@ namespace WebServer
             RateLimitReq = 0; // max tokens per IP (0 = disabled, recommended: 100-500 for public sites)
             RateLimitRefill = 100; // tokens added per period (recommended: equal to or less than RateLimitReq)
             RateLimitQueue = 0; // requests to queue when limit hit (0 = reject immediately)
-            MaxFilePathLength = 1024;
+            MaxFilePathLength = 512;
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;
             ClearSessEveryXMin = 5;
