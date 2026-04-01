@@ -11,11 +11,13 @@ using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Win32.SafeHandles;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Compression;
 using System.Linq.Expressions;
 using System.Net;
@@ -144,124 +146,123 @@ namespace WebServer
 
             if (Program.BackendDir != "")
             {
+                if (!Program.BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
+                    Program.BackendDir += '/'; // avoid per-req addition
                 app.UseWebSockets();
                 app.UseRouting();
                 app.UseEndpoints(endpoints =>
-             {
-                 endpoints.Map("/{**catchAll}", async context =>
-                 {
+                {
+                    endpoints.Map("/{**catchAll}", async context =>
+                     {
 #pragma warning disable CS8604 // Possible null reference argument.
-                     if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain)) // while .Host is nullable, it is always set in this case. Checking for .HasValue would waste a CPU cycle, probably.
-                     {
-                         context.Request.Host = new HostString(OtherDomain);
-                     }
+                         var hostValue = context.Request.Host.Value; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
+                         if (Program.config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
+                         {
+                             context.Request.Host = new HostString(OtherDomain);
+                             hostValue = OtherDomain;
+                         }
 #pragma warning restore CS8604 // Possible null reference argument.
-                     ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
-                     ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-                     ulong key = HashHostAndPath(_host, _path); // skip string concat
-                     if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath))
-                     {
-                         context.Request.Path = new PathString(newPath);
-                     }
+                         ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
+                         ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                     string[] pathBuffer = ArrayPool<string>.Shared.Rent(Program.config.MaxDirDepth + 2);
-                     try
-                     {
-                         Array.Clear(pathBuffer, 0, pathBuffer.Length); // prevent leftover strings
-                         GetDomainBasedPath(context, pathBuffer, out int pathLen); // fills buffer, sets actual length. Limited by Program.config.MaxDirDepth, no need for extra checks.
+                         // Optional domain filter — store string to keep span alive
+                         ReadOnlySpan<char> hostSpan = ApplyDomainFilter(_host);
 
-                         Span<char> filePathBuffer = stackalloc char[Program.config.MaxFilePathLength];
-                         int pos = 0;
-
-                         // Copy segments from pathBuffer into filePathBuffer, separated by '/'
-                         for (int i = 0; i < pathLen; i++)
+                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
+                         if (Program.config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
                          {
-                             string segment = pathBuffer[i];
-
-                             if (segment == null) continue; // defensive
-                             if (pos + segment.Length >= Program.config.MaxFilePathLength)
-                             {
-                                 context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                 // Console.WriteLine("pos: " + pos + " | segment: " + segment.Length.ToString() + " | max: " + Program.config.MaxFilePathLength.ToString());
-                                 return; // cancel if too long
-                             }
-                             // Copy segment
-                             segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
-                             pos += segment.Length;
-
-                             // Add '/' between segments if not last
-                             if (i < pathLen - 1)
-                             {
-                                 filePathBuffer[pos++] = '/';
-                             }
-                         }
-                         // At this point filePathBuffer[..pos] contains the full path as a Span<char>
-                         string FileToUse = filePathBuffer.Slice(0, pos).ToString();
-                         if (!FileLead.TryGetValue(FileToUse, out var _Handler))
-                         {
-                             while (pathLen > 2)
-                             {
-                                 pathLen--;
-
-                                 pos = 0;
-                                 for (int i = 0; i < pathLen; i++)
-                                 {
-                                     string segment = pathBuffer[i];
-                                     segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
-                                     pos += segment.Length;
-
-                                     if (i < pathLen - 1)
-                                         filePathBuffer[pos++] = '/';
-                                 }
-
-                                 FileToUse = filePathBuffer.Slice(0, pos).ToString();
-
-                                 if (FileLead.TryGetValue(FileToUse, out _Handler))
-                                     break;
-                             }
+                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                             _path = newPath.AsSpan(); // update the span used directly below
                          }
 
-                         if (_Handler != null)
+                         // Write BackendDir
+                         ReadOnlySpan<char> backendDir = Program.BackendDir.AsSpan();
+                         Span<char> buffer = stackalloc char[Program.config.MaxFilePathLength];
+                         int pos = backendDir.Length + hostSpan.Length; // start pos after the two writes
+                         if (pos >= buffer.Length) // only possible if someone uses a fake domain. Possible, though, so leave this here as a security feature.
                          {
-                             for (int i = 0; i < defaultHeaderCount; i++)
-                             {
-                                 context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i]; // perhaps not necessary in 404NotFound?
-                             }
-                             int dotIndex = FileToUse.LastIndexOf('.');
-                             //string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
-                             if (dotIndex >= 0)
-                             {
-                                 string Ext = FileToUse[(dotIndex + 1)..];
-                                 if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
-                                 {
-                                     for (int i = 0; i < ctype.Length; i += 2)
-                                     {
-                                         context.Response.Headers[ctype[i]] = ctype[i + 1];
-                                     }
-                                 }
-                             }
-                             await _Handler(context, FileToUse);
+                             context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
                              return;
                          }
-                     }
-#if DEBUG
-                     catch (Exception e)
-                     {
-                         Console.WriteLine(context.Request.Path);
-                         Console.WriteLine(context.Request.Headers.Range);
-                         Console.WriteLine(string.Join("\n", context.Response.Headers.Select(h => h.Key + ": " + h.Value)));
-                         Console.WriteLine(e);
-                     }
-#endif
-                     finally
-                     {
-                         ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
-                     }
+                         backendDir.CopyTo(buffer);
+                         hostSpan.CopyTo(buffer[backendDir.Length..]);
 
-                     context.Response.StatusCode = StatusCodes.Status404NotFound;
-                     await context.Response.WriteAsync(error404);
-                 });
-             });
+                         Span<int> slashPositions = stackalloc int[Program.config.MaxDirDepth + 4];
+                         int slashCount = 0;
+
+                         // Write path segments
+                         int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
+                         while (i < _path.Length)
+                         {
+                             if (_path[i] == '/') { i++; continue; }
+
+                             int segStart = i;
+                             while (i < _path.Length && _path[i] != '/') i++;
+
+                             ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
+
+                             if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
+                             {
+                                 if (slashCount >= slashPositions.Length)
+                                 {
+                                     context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
+                                     return;
+                                 }
+
+                                 int needed = segment.Length + 1;
+                                 if (pos + needed >= buffer.Length)
+                                 {
+                                     context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
+                                     return;
+                                 }
+
+                                 slashPositions[slashCount++] = pos;
+                                 buffer[pos++] = '/';
+                                 segment.CopyTo(buffer[pos..]);
+                                 pos += segment.Length;
+                             }
+                             // no i++ — i already sits on '/' or end, handled by leading check
+                         }
+
+                         // Lookup
+                         string fileKey = new string(buffer[..pos]);
+
+                         if (!FileLead.TryGetValue(fileKey, out var handler) && Program.config.LoopFindEndpoint) // only lose perf on misses?
+                         {
+                             for (int s = slashCount - 1; s >= 0; s--)
+                             {
+                                 int fallbackPos = slashPositions[s];
+                                 string fallbackKey = new string(buffer[..fallbackPos]);
+                                 if (FileLead.TryGetValue(fallbackKey, out handler))
+                                 {
+                                     fileKey = fallbackKey;
+                                     break;
+                                 }
+                             }
+                         }
+
+                         if (handler != null)
+                         {
+                             for (int j = 0; j < defaultHeaderCount; j++)
+                                 context.Response.Headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+
+                             int dotIndex = fileKey.LastIndexOf('.');
+                             if (dotIndex >= 0)
+                             {
+                                 string ext = fileKey[(dotIndex + 1)..];
+                                 if (Program.config.OptExtTypes.TryGetValue(ext, out string[]? ctype))
+                                     for (int j = 0; j < ctype.Length; j += 2)
+                                         context.Response.Headers[ctype[j]] = ctype[j + 1];
+                             }
+
+                             await handler(context, fileKey);
+                             return;
+                         }
+
+                         context.Response.StatusCode = StatusCodes.Status404NotFound;
+                         await context.Response.WriteAsync(error404);
+                     });
+                });
 
                 Reload();
                 Task.Run(() =>
@@ -351,38 +352,23 @@ namespace WebServer
 
             return fullPath;
         }
-        public static void GetDomainBasedPath(HttpContext context, Span<string> buffer, out int length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
-            length = 0;
-
-            // BackendDir
-            buffer[length++] = Program.BackendDir;
-
-            // Host processing
-            string host = context.Request.Host.Value;
-            int colonIndex = host.IndexOf(':');
-            if (colonIndex != -1) host = host[..colonIndex];
-
-            if (!string.IsNullOrEmpty(Program.config.FilterFromDomain))
-                host = host.Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
-
-            buffer[length++] = host;
-
-            // Request path
-            ReadOnlySpan<char> path = context.Request.Path.Value.AsSpan().Trim('/');
-            int start = 0;
-            while (start < path.Length)
-            {
-                int sep = path.Slice(start).IndexOf('/');
-                if (sep == -1) sep = path.Length - start;
-
-                ReadOnlySpan<char> part = path.Slice(start, sep);
-                if (!part.SequenceEqual("..".AsSpan())) // prevent directory traversal
-                    buffer[length++] = part.ToString(); // unavoidable allocation here if you store strings
-
-                start += sep + 1;
-            }
+            int colon = host.IndexOf(':');
+            return colon >= 0 ? host[..colon] : host;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ReadOnlySpan<char> ApplyDomainFilter(ReadOnlySpan<char> host)
+        {
+            if (string.IsNullOrEmpty(Program.config.FilterFromDomain))
+                return host;
+
+            var filtered = host.ToString().Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
+            return filtered.AsSpan();
+        }
+
         // Sequential FNV-1a: host then path
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)

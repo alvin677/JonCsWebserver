@@ -12,6 +12,7 @@ namespace WebServer
         public bool Logging { get; set; }
         public bool DebugPages { get; set; }
         public bool ServerMetrics { get; set; }
+        public bool LoopFindEndpoint { get; set; }
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
@@ -118,6 +119,7 @@ namespace WebServer
             Logging = false;
             DebugPages = false;
             ServerMetrics = false;
+            LoopFindEndpoint = false;
             Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
