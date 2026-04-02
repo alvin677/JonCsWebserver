@@ -2,6 +2,7 @@
 using CSScriptLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Timeouts;
@@ -45,6 +46,7 @@ namespace WebServer
         public static Config config = new Config();
         public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
+        public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>();
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -259,6 +261,11 @@ namespace WebServer
                          }
 
                          context.Response.StatusCode = StatusCodes.Status404NotFound;
+                         if (ErrorDict.TryGetValue(hostValue, out var errHandler))
+                         {
+                             await errHandler(context);
+                             return;
+                         }
                          await context.Response.WriteAsync(error404);
                      });
                 });
@@ -843,21 +850,42 @@ namespace WebServer
                 IndexErrorPage(Folder.Replace(Path.DirectorySeparatorChar, '/'));
             }
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static string ExtractDomain(string folder)
+        {
+            int lastSlash = folder.LastIndexOf('/');
+            return lastSlash >= 0 ? folder[(lastSlash + 1)..] : folder;
+        }
         public static void IndexErrorPage(string Folder)
         {
             string tmpfile = Path.Combine(Folder, "error404.html").Replace(Path.DirectorySeparatorChar, '/');
             if (FileLead.ContainsKey(tmpfile)) // error404.html exists
             {
+                string dom = ExtractDomain(Folder);
                 // Since we currently loop backwards (LoopFindEndpoint=true) rather than give 404 by default,
                 // any time a 404 would be displayed is if /BackendDir/domain is not set.
                 try
                 {
                     string errcontent = File.ReadAllText(tmpfile);
-                    FileLead[tmpfile] = async (context, path) => {
-                        context.Response.StatusCode = StatusCodes.Status404NotFound;
-                        await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                    string[] parts = errcontent.Split("${0}");
+                    ErrorDict[dom] = async (context) => {
+                        await context.Response.WriteAsync(parts[0]);
+                        if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                        {
+                            await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                        }
+                        await context.Response.WriteAsync(parts[1]);
+                        // await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
                     };
-                    if(!FileLead.ContainsKey(Folder)) FileLead[Folder] = FileLead[tmpfile]; // for when LoopFindEndpoint=true
+                    if(!FileLead.ContainsKey(Folder)) FileLead[Folder] = async (context, path) => { // for when LoopFindEndpoint=true
+                        context.Response.StatusCode = StatusCodes.Status404NotFound;
+                        await context.Response.WriteAsync(parts[0]);
+                        if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                        {
+                            await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                        }
+                        await context.Response.WriteAsync(parts[1]);
+                    };
                 }
                 catch (Exception) {}
             }
