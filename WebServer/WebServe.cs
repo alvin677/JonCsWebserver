@@ -864,24 +864,7 @@ namespace WebServer
 
                 if (FileLead.TryGetValue(tmpHash, out var existingEntry))
                 {
-                    // Precompute the index file's full path for the directory entry
-                    string indexPath = existingEntry.FilePath;
-                    var handler = existingEntry.Handler;
-
-                    // Reuse the precomputed ContentTypeHeaders from the file's entry
-                    var ctype = existingEntry.ContentTypeHeaders;
-
-                    Func<HttpContext, string, Task> dirHandler = ctype != null
-                        ? (context, path) =>
-                        {
-                            for (int i = 0; i < ctype.Length; i += 2)
-                                context.Response.Headers[ctype[i]] = ctype[i + 1];
-                            return handler(context, indexPath);
-                        }
-                    : (context, path) => handler(context, indexPath);
-
-                    // Directory entry has no meaningful extension — null ContentTypeHeaders
-                    FileLead[folderHash] = new EndpointEntry(dirHandler, indexPath, null);
+                    FileLead[folderHash] = existingEntry; // reuse entire entry — same handler, path, content-type
                     any = true;
                     break;
                 }
