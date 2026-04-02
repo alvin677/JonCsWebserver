@@ -73,15 +73,15 @@ public class Program
                             }
                             if (Args.Length > 1)
                             {
-                                foreach (string path in Startup.FileLead.Keys)
+                                foreach (var entry in Startup.FileLead.Values)
                                 {
-                                    if (path.Contains(Args[1])) Console.WriteLine(path);
+                                    if (entry.FilePath.Contains(Args[1])) Console.WriteLine(entry.FilePath);
                                 }
                             }
                             else
-                                foreach (string path in Startup.FileLead.Keys)
+                                foreach (var entry in Startup.FileLead.Values)
                                 {
-                                    Console.WriteLine(path);
+                                    Console.WriteLine(entry.FilePath);
                                 }
                             break;
                         }
@@ -89,7 +89,7 @@ public class Program
                         {
                             if (Args.Length > 1)
                             {
-                                Console.WriteLine(Startup.FileLead.Keys.Where(str => str.Contains(Args[1])).Count().ToString());
+                                Console.WriteLine(Startup.FileLead.Values.Where(entry => entry.FilePath.Contains(Args[1])).Count().ToString());
                             }
                             else
                             {
