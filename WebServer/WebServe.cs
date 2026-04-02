@@ -46,7 +46,7 @@ namespace WebServer
         public static Config config = new Config();
         public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
         public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
-        public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>();
+        public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -868,24 +868,34 @@ namespace WebServer
                 {
                     string errcontent = File.ReadAllText(tmpfile);
                     string[] parts = errcontent.Split("${0}");
-                    ErrorDict[dom] = async (context) => {
-                        await context.Response.WriteAsync(parts[0]);
-                        if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                    if (parts.Length != 1)
+                    {
+                        ErrorDict[dom] = async (context) =>
                         {
-                            await context.Response.WriteAsync(context.Request.Headers.Referer!);
-                        }
-                        await context.Response.WriteAsync(parts[1]);
-                        // await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
-                    };
-                    if(!FileLead.ContainsKey(Folder)) FileLead[Folder] = async (context, path) => { // for when LoopFindEndpoint=true
-                        context.Response.StatusCode = StatusCodes.Status404NotFound;
-                        await context.Response.WriteAsync(parts[0]);
-                        if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
-                        {
-                            await context.Response.WriteAsync(context.Request.Headers.Referer!);
-                        }
-                        await context.Response.WriteAsync(parts[1]);
-                    };
+                            await context.Response.WriteAsync(parts[0]);
+                            if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                            {
+                                await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                            }
+                            await context.Response.WriteAsync(parts[1]);
+                            // await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                        };
+                        if (!FileLead.ContainsKey(Folder)) FileLead[Folder] = async (context, path) =>
+                        { // for when LoopFindEndpoint=true
+                            context.Response.StatusCode = StatusCodes.Status404NotFound;
+                            await context.Response.WriteAsync(parts[0]);
+                            if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                            {
+                                await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                            }
+                            await context.Response.WriteAsync(parts[1]);
+                        };
+                    }
+                    else
+                    {
+                        ErrorDict[dom] = async (context) => { await context.Response.WriteAsync(errcontent); };
+                        if (!FileLead.ContainsKey(Folder)) FileLead[Folder] = async (context, path) => { await context.Response.WriteAsync(errcontent); };
+                    }
                 }
                 catch (Exception) {}
             }
