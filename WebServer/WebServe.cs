@@ -522,9 +522,8 @@ namespace WebServer
         }
         private static async Task DefDownload(HttpContext context, string file)
         {
-            string fn = "undefined";
-            string[] pa = file.Split("/");
-            if (pa.Length > 0) fn = pa[pa.Length - 1];
+            int slash = file.LastIndexOf('/');
+            string fn = slash >= 0 ? file[(slash + 1)..] : "undefined";
             context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
             await DefHandle(context, file);
         }
@@ -585,8 +584,8 @@ namespace WebServer
                     try
                     {
                         HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
-                        
-                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout)).Token);
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.WebSocketEndpointTimeout));
+                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, cts.Token);
                     }
                     catch(Exception){
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
@@ -738,8 +737,8 @@ namespace WebServer
         }
         public static void IndexFile(string file)
         {
-            string[] getExt = file.Split('.');
-            string Ext = getExt[getExt.Length - 1];
+            int dotIdx = file.LastIndexOf('.');
+            string Ext = dotIdx >= 0 ? file[(dotIdx + 1)..] : "";
             if (config.Enable_CS)
             {
                 if (Ext == "_cs")
