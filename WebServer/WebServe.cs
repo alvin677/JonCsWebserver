@@ -210,7 +210,7 @@ namespace WebServer
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
                          // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (Startup.config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
+                         if (config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
                          {
                              context.Request.Path = new PathString(newPath); // needed for C#-endpoints
                              _path = newPath.AsSpan(); // update the span used directly below
@@ -942,7 +942,7 @@ namespace WebServer
             ReadOnlySpan<char> relative = fullPath.AsSpan(BackendDir.Length);
             ulong hash = HashSpan(relative);
 
-            if (FileLead.TryGetValue(hash, out var existing) && existing.FilePath != fullPath)
+            if (FileLead.TryGetValue(hash, out var existing) && !string.Equals(existing.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"[WARN] Hash collision: {fullPath} collides with {existing.FilePath}");
@@ -962,7 +962,12 @@ namespace WebServer
         {
             ulong hash = 14695981039346656037UL;
             for (int i = 0; i < data.Length; i++)
-                hash = (hash ^ data[i]) * 1099511628211UL;
+            {
+                char c = data[i];
+                // Branch-free ASCII lowercase, same as HashHostAndPath
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                hash = (hash ^ c) * 1099511628211UL;
+            }
             return hash;
         }
 

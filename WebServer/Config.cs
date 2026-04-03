@@ -16,6 +16,7 @@ namespace WebServer
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
+        public bool AllowSynchronousIO { get; set; }
         public bool ForceTLS { get; set; }
         public bool BufferFastCGIResponse { get; set; }
         public long? MaxConcurrentConnections { get; set; }
@@ -123,6 +124,7 @@ namespace WebServer
             Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
+            AllowSynchronousIO = false;
             ForceTLS = false;
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;

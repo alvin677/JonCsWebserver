@@ -286,6 +286,7 @@ public class Program
                     options.Limits.MaxRequestBodySize = Startup.config.MaxRequestBodySize;
                     options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(Startup.config.KeepAliveTimeout); // 130
                     options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(Startup.config.RequestHeadersTimeout); // 30
+                    options.AllowSynchronousIO = Startup.config.AllowSynchronousIO;
                     //ThreadPool.SetMinThreads(1000, 1000);
 
                     options.ConfigureHttpsDefaults(adapterOptions =>
