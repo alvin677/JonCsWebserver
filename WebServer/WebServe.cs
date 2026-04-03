@@ -78,7 +78,7 @@ namespace WebServer
         }
 
         public static readonly ConcurrentDictionary<ulong, EndpointEntry> FileLead = new();
-        private static volatile FrozenDictionary<ulong, EndpointEntry> _frozenFileLead = FrozenDictionary<ulong, EndpointEntry>.Empty;
+        // private static volatile FrozenDictionary<ulong, EndpointEntry> _frozenFileLead = FrozenDictionary<ulong, EndpointEntry>.Empty;
         public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
@@ -193,7 +193,7 @@ namespace WebServer
                     endpoints.Map("/{**catchAll}", async context =>
                      {
                          var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
-                         if (Startup.config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
+                         if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
                          {
                              context.Request.Host = new HostString(OtherDomain);
                              hostValue = OtherDomain;
@@ -204,7 +204,7 @@ namespace WebServer
                          if (!string.IsNullOrEmpty(config.FilterFromDomain)) // Optional domain filter
                          {
                              filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
-                             hostSpan = filteredHost.AsSpan();
+                             hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
                          }
                          else hostSpan = _host;
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
@@ -216,21 +216,24 @@ namespace WebServer
                              _path = newPath.AsSpan(); // update the span used directly below
                          }
 
-                         // ReadOnlySpan<char> backendDir = BackendDirMemory.Span; // Not needed here anymore
-                         Span<char> buffer = stackalloc char[config.MaxFilePathLength];
-                         int pos = hostSpan.Length; // start pos after the two writes
-                         if (pos >= buffer.Length) // only possible if someone uses a fake domain. Possible, though, so leave this here as a security feature.
-                         {
-                             context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                             return;
-                         }
-                         // backendDir.CopyTo(buffer);
-                         hostSpan.CopyTo(buffer);
+                         // Build hash incrementally — no buffer, no slashPositions needed
+                         const ulong FNV_OFFSET = 14695981039346656037UL;
+                         const ulong FNV_PRIME = 1099511628211UL;
 
-                         Span<int> slashPositions = stackalloc int[Startup.config.MaxDirDepth + 4];
+                         ulong hash = FNV_OFFSET;
+
+                         // Hash host (already case-folded by StripPort/filter)
+                         for (int k = 0; k < hostSpan.Length; k++)
+                         {
+                             char c = hostSpan[k];
+                             c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                             hash = (hash ^ c) * FNV_PRIME;
+                         }
+
+                         // Per-segment hash accumulation + snapshot after each segment
+                         Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
                          int slashCount = 0;
 
-                         // Write path segments
                          int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
                          while (i < _path.Length)
                          {
@@ -243,59 +246,60 @@ namespace WebServer
 
                              if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
                              {
-                                 if (slashCount >= slashPositions.Length)
+                                 if (slashCount >= slashHashes.Length)
                                  {
                                      context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
                                      return;
                                  }
 
-                                 int needed = segment.Length + 1;
-                                 if (pos + needed >= buffer.Length)
-                                 {
-                                     context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                     return;
-                                 }
+                                 // Snapshot hash before this segment (for fallback to parent directory)
+                                 slashHashes[slashCount++] = hash;
 
-                                 slashPositions[slashCount++] = pos;
-                                 buffer[pos++] = '/';
-                                 segment.CopyTo(buffer[pos..]);
-                                 pos += segment.Length;
+                                 // Fold in '/' + segment chars
+                                 hash = (hash ^ '/') * FNV_PRIME;
+                                 for (int k = 0; k < segment.Length; k++)
+                                 {
+                                     char c = segment[k];
+                                     c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                     hash = (hash ^ c) * FNV_PRIME;
+                                 }
                              }
-                             // no i++ — i already sits on '/' or end, handled by leading check
+                             // no i++ — handled by leading check
                          }
 
-                         // Lookup
-                         // buffer currently contains: backendDir + host + /path // removed backendDir
-                         // For hash, slice off backendDir:
-                         ulong fileHash = HashSpan(buffer[..pos]);
+                         // hash now represents the full path
 
-                         Task DispatchEntry(EndpointEntry entry)
+                         if (FileLead.TryGetValue(hash, out var entry))
                          {
+                             var headers = context.Response.Headers;
+
                              for (int j = 0; j < defaultHeaderCount; j++)
-                                 context.Response.Headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+                                 headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
                              if (entry.ContentTypeHeaders != null)
                                  for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
-                                     context.Response.Headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+                                     headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                             return entry.Handler(context, entry.FilePath);
-                         }
-
-                         if (_frozenFileLead.TryGetValue(fileHash, out var entry))
-                         {
-                             // entry.FilePath is the precomputed absolute path — zero allocation
-                             await DispatchEntry(entry);
+                             await entry.Handler(context, entry.FilePath);
                              return;
                          }
                          else if (config.LoopFindEndpoint)
                          {
                              for (int s = slashCount - 1; s >= 0; s--)
                              {
-                                 ulong fallbackHash = HashSpan(buffer[..slashPositions[s]]);
-                                 if (_frozenFileLead.TryGetValue(fallbackHash, out entry))
+                                 if (FileLead.TryGetValue(slashHashes[s], out entry))
                                  {
-                                     await DispatchEntry(entry);
-                                     return; // was missing
+                                     var headers = context.Response.Headers;
+
+                                     for (int j = 0; j < defaultHeaderCount; j++)
+                                         headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+
+                                     if (entry.ContentTypeHeaders != null)
+                                         for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                             headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+
+                                     await entry.Handler(context, entry.FilePath);
+                                     return;
                                  }
                              }
                          }
@@ -743,7 +747,7 @@ namespace WebServer
         {
             string[] getExt = file.Split('.');
             string Ext = getExt[getExt.Length - 1];
-            if (Startup.config.Enable_CS)
+            if (config.Enable_CS)
             {
                 if (Ext == "_cs")
                 {
@@ -756,7 +760,7 @@ namespace WebServer
                     return;
                 }
             }
-            if (Startup.config.Enable_PHP)
+            if (config.Enable_PHP)
             {
                 if (Ext == "php")
                 {
@@ -772,7 +776,7 @@ namespace WebServer
                     return;
                 }
             }
-            if(Startup.config.Enable_WASM)
+            if(config.Enable_WASM)
             {
                 if(Ext == "_wasm")
                 {
@@ -873,13 +877,13 @@ namespace WebServer
             }
 
             if (!any)
-                FileLead.TryRemove(folderHash, out _);
+                FileLead.Remove(folderHash, out _);
         }
         public static void IndexErrorPages(string rootDirectory)
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
                 IndexErrorPage(folder.Replace(Path.DirectorySeparatorChar, '/'));
-            _frozenFileLead = FileLead.ToFrozenDictionary(); // Ensure index is updated
+            // _frozenFileLead = FileLead.ToFrozenDictionary(); // Ensure index is updated
         }
         public static void IndexErrorPage(string Folder)
         {
@@ -938,24 +942,24 @@ namespace WebServer
         }
         public static void AddToFileLead(string fullPath, Func<HttpContext, string, Task> handler)
         {
-            // Strip BackendDir from the hash key — it's constant, no need to include it
+            // Strip BackendDir — constant prefix, excluded from hash to match hot path
             ReadOnlySpan<char> relative = fullPath.AsSpan(BackendDir.Length);
             ulong hash = HashSpan(relative);
-
-            if (FileLead.TryGetValue(hash, out var existing) && !string.Equals(existing.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
+            // Collision detection — fire at index time, zero hot path cost
+            if (FileLead.TryGetValue(hash, out var existing)
+                && !string.Equals(existing.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"[WARN] Hash collision: {fullPath} collides with {existing.FilePath}");
+                Console.WriteLine($"[WARN] Hash collision: {fullPath} collides with {existing.FilePath} — skipping");
                 Console.ResetColor();
                 return;
-            }
-
+            } // Same file re-indexed (e.g. file watcher update) — fall through and overwrite
             FileLead[hash] = new EndpointEntry(handler, fullPath);
         }
         public static void RemoveFromFileLead(string file)
         {
             ulong hash = HashSpan(file.AsSpan(BackendDir.Length));
-            FileLead.TryRemove(hash, out _);
+            FileLead.Remove(hash, out _);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashSpan(ReadOnlySpan<char> data)
@@ -964,7 +968,8 @@ namespace WebServer
             for (int i = 0; i < data.Length; i++)
             {
                 char c = data[i];
-                // Branch-free ASCII lowercase, same as HashHostAndPath
+                // Branch-free ASCII lowercase — valid for ASCII paths only
+                // Non-ASCII domain names would need UTF-8 encoding first
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * 1099511628211UL;
             }
@@ -1020,7 +1025,7 @@ namespace WebServer
             }
             string? currFolder = Path.GetDirectoryName(filePath);
             if(currFolder != null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
-            _frozenFileLead = FileLead.ToFrozenDictionary(); // Update on file change
+            // _frozenFileLead = FileLead.ToFrozenDictionary(); // Update on file change
         }
 
         static void RemoveFromIndex(string filePath)
