@@ -12,9 +12,11 @@ namespace WebServer
         public bool Logging { get; set; }
         public bool DebugPages { get; set; }
         public bool ServerMetrics { get; set; }
+        public bool LoopFindEndpoint { get; set; }
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
+        public bool AllowSynchronousIO { get; set; }
         public bool ForceTLS { get; set; }
         public bool BufferFastCGIResponse { get; set; }
         public long? MaxConcurrentConnections { get; set; }
@@ -118,9 +120,11 @@ namespace WebServer
             Logging = false;
             DebugPages = false;
             ServerMetrics = false;
+            LoopFindEndpoint = false;
             Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
+            AllowSynchronousIO = false;
             ForceTLS = false;
             BufferFastCGIResponse = false;
             MaxConcurrentConnections = null;
@@ -137,7 +141,7 @@ namespace WebServer
             RateLimitReq = 0; // max tokens per IP (0 = disabled, recommended: 100-500 for public sites)
             RateLimitRefill = 100; // tokens added per period (recommended: equal to or less than RateLimitReq)
             RateLimitQueue = 0; // requests to queue when limit hit (0 = reject immediately)
-            MaxFilePathLength = 1024;
+            MaxFilePathLength = 512;
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;
             ClearSessEveryXMin = 5;

@@ -2,6 +2,7 @@
 using CSScriptLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Timeouts;
@@ -11,11 +12,14 @@ using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Win32.SafeHandles;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Compression;
 using System.Linq.Expressions;
 using System.Net;
@@ -37,21 +41,55 @@ namespace WebServer
     public class Startup
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 - page not found</title><link href=\"/main.css\" rel=\"stylesheet\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br /><img src=\"//jonhosting.com/JonHost.png\" /><br /><p>Maybe we're working on adding this page.</p>${0}<br /><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br /><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br /><sup><em>Did you know that you're old?</em></sup></body></html>";
+        const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 Page not found</title><link href=\"/main.css\" rel=\"stylesheet\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br/><img src=\"//jonhosting.com/JonHost.png\"/><br/><p>Please wait. Maybe we are working on loading or adding this page.</p>${0}<br/><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br/><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br/><sup><em>Did you know that you're old?</em></sup></body></html>";
+        public static string WWWdir = "";
+        public static string BackendDir = "/var/www";
+        public static Config config = new Config();
         public static readonly ConcurrentDictionary<string, long[]> FileIndex = new ConcurrentDictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
-        public static readonly ConcurrentDictionary<string, Func<HttpContext, string, Task>> FileLead = new ConcurrentDictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
+        public readonly struct EndpointEntry
+        {
+            public readonly Func<HttpContext, string, Task> Handler;
+            public readonly string FilePath;
+            public readonly string[]? ContentTypeHeaders; // precomputed ctype array, or null
+
+            public EndpointEntry(Func<HttpContext, string, Task> handler, string filePath, string[]? contentTypeHeaders)
+            {
+                Handler = handler;
+                FilePath = filePath;
+                ContentTypeHeaders = contentTypeHeaders;
+            }
+            public EndpointEntry(Func<HttpContext, string, Task> handler, string filePath)
+            {
+                Handler = handler;
+                FilePath = filePath;
+
+                // Precompute content-type headers at index time
+                int dot = filePath.LastIndexOf('.');
+                if (dot >= 0)
+                {
+                    string ext = filePath[(dot + 1)..];
+                    config.OptExtTypes.TryGetValue(ext, out ContentTypeHeaders);
+                }
+                else
+                {
+                    ContentTypeHeaders = null;
+                }
+            }
+        }
+
+        public static readonly ConcurrentDictionary<ulong, EndpointEntry> FileLead = new();
+        public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Program.config.ClearSessEveryXMin));
+        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Startup.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
         };
-        public ICollection<string> FileLeadKeys() { return FileLead.Keys; }
 
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = new string[0];
@@ -64,7 +102,7 @@ namespace WebServer
 
             public Stream CreateStream(Stream outputStream)
             {
-                return new DeflateStream(outputStream, Program.config.CompressionLevel, leaveOpen: true);
+                return new DeflateStream(outputStream, Startup.config.CompressionLevel, leaveOpen: true);
             }
         }
 
@@ -72,7 +110,7 @@ namespace WebServer
         {
             services.AddRouting();
             services.AddWebSockets(config => {
-                config.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketTimeout);
+                config.KeepAliveInterval = TimeSpan.FromSeconds(Startup.config.WebSocketTimeout);
             });
             // services.AddSingleton<BackgroundTaskQueue>();
             // services.AddHostedService<Worker>();
@@ -87,43 +125,43 @@ namespace WebServer
 
             services.Configure<GzipCompressionProviderOptions>(options =>
             {
-                options.Level = Program.config.CompressionLevel;
+                options.Level = Startup.config.CompressionLevel;
             });
-            if (Program.config.Logging) services.AddHttpLogging(options => { });
-            if (Program.config.RateLimitReq != 0)
+            if (Startup.config.Logging) services.AddHttpLogging(options => { });
+            if (Startup.config.RateLimitReq != 0)
                 services.AddRateLimiter(options => { });
-            if(Program.config.RequestTimeout != 0)
+            if(Startup.config.RequestTimeout != 0)
                 services.AddRequestTimeouts(options =>
                 {
                     options.DefaultPolicy = new RequestTimeoutPolicy
                     {
-                        Timeout = TimeSpan.FromSeconds(Program.config.RequestTimeout),
+                        Timeout = TimeSpan.FromSeconds(Startup.config.RequestTimeout),
                         TimeoutStatusCode = StatusCodes.Status504GatewayTimeout
                     };
                 });
         }
         public void Configure(IApplicationBuilder app)
         {
-            if (Program.WWWdir != "")
+            if (WWWdir != "")
             {
                 app.UseStaticFiles(new StaticFileOptions
                 {
-                    FileProvider = new PhysicalFileProvider(Path.Combine(Program.WWWdir)) //,
+                    FileProvider = new PhysicalFileProvider(Path.Combine(WWWdir)) //,
                                                                                           //RequestPath = "/"
                 });
             }
-            if (Program.config.RequestTimeout != 0) 
+            if (config.RequestTimeout != 0) 
                 app.UseRequestTimeouts();
-            if (Program.config.MaxBytesPerSecond != 0)
+            if (config.MaxBytesPerSecond != 0)
                 app.UseMiddleware<BandwidthLimiterMiddleware>();
-            if (Program.config.Logging) app.UseHttpLogging();
-            if (Program.config.DebugPages) app.UseDeveloperExceptionPage();
-            if (Program.config.ServerMetrics)
+            if (config.Logging) app.UseHttpLogging();
+            if (config.DebugPages) app.UseDeveloperExceptionPage();
+            if (config.ServerMetrics)
                 app.Use(async (context, next) => {
                     Interlocked.Increment(ref Program.totalRequests);
                     await next(context);
                 });
-            if (Program.config.RateLimitReq != 0)
+            if (config.RateLimitReq != 0)
             {
                 var rate = new RateLimiterOptions();
                 rate.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -132,155 +170,163 @@ namespace WebServer
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                         _ => new TokenBucketRateLimiterOptions
                         {
-                            TokenLimit = Program.config.RateLimitReq,
-                            ReplenishmentPeriod = TimeSpan.FromSeconds(Program.config.RateLimitTime),
-                            TokensPerPeriod = Program.config.RateLimitRefill,
+                            TokenLimit = config.RateLimitReq,
+                            ReplenishmentPeriod = TimeSpan.FromSeconds(config.RateLimitTime),
+                            TokensPerPeriod = config.RateLimitRefill,
                             AutoReplenishment = true,
-                            QueueLimit = Program.config.RateLimitQueue
+                            QueueLimit = config.RateLimitQueue
                         }));
                 app.UseRateLimiter(rate);
             }
             app.UseResponseCompression();
 
-            if (Program.BackendDir != "")
+            if (BackendDir != "")
             {
+                if (!BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
+                    BackendDir += '/'; // avoid per-req addition
+                // ReadOnlyMemory<char> BackendDirMemory = BackendDir.AsMemory();
                 app.UseWebSockets();
                 app.UseRouting();
                 app.UseEndpoints(endpoints =>
-             {
-                 endpoints.Map("/{**catchAll}", async context =>
-                 {
-#pragma warning disable CS8604 // Possible null reference argument.
-                     if (Program.config.DomainAlias.TryGetValue(context.Request.Host.Value, out string? OtherDomain)) // while .Host is nullable, it is always set in this case. Checking for .HasValue would waste a CPU cycle, probably.
+                {
+                    endpoints.Map("/{**catchAll}", async context =>
                      {
-                         context.Request.Host = new HostString(OtherDomain);
-                     }
-#pragma warning restore CS8604 // Possible null reference argument.
-                     ReadOnlySpan<char> _host = context.Request.Host.Value.AsSpan();
-                     ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-                     ulong key = HashHostAndPath(_host, _path); // skip string concat
-                     if (Program.config.UrlAliasHash.TryGetValue(key, out string? newPath))
-                     {
-                         context.Request.Path = new PathString(newPath);
-                     }
-
-                     string[] pathBuffer = ArrayPool<string>.Shared.Rent(Program.config.MaxDirDepth + 2);
-                     try
-                     {
-                         Array.Clear(pathBuffer, 0, pathBuffer.Length); // prevent leftover strings
-                         GetDomainBasedPath(context, pathBuffer, out int pathLen); // fills buffer, sets actual length. Limited by Program.config.MaxDirDepth, no need for extra checks.
-
-                         Span<char> filePathBuffer = stackalloc char[Program.config.MaxFilePathLength];
-                         int pos = 0;
-
-                         // Copy segments from pathBuffer into filePathBuffer, separated by '/'
-                         for (int i = 0; i < pathLen; i++)
+                         var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
+                         if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
                          {
-                             string segment = pathBuffer[i];
-
-                             if (segment == null) continue; // defensive
-                             if (pos + segment.Length >= Program.config.MaxFilePathLength)
-                             {
-                                 context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                 // Console.WriteLine("pos: " + pos + " | segment: " + segment.Length.ToString() + " | max: " + Program.config.MaxFilePathLength.ToString());
-                                 return; // cancel if too long
-                             }
-                             // Copy segment
-                             segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
-                             pos += segment.Length;
-
-                             // Add '/' between segments if not last
-                             if (i < pathLen - 1)
-                             {
-                                 filePathBuffer[pos++] = '/';
-                             }
+                             context.Request.Host = new HostString(OtherDomain);
+                             hostValue = OtherDomain;
                          }
-                         // At this point filePathBuffer[..pos] contains the full path as a Span<char>
-                         string FileToUse = filePathBuffer.Slice(0, pos).ToString();
-                         if (!FileLead.TryGetValue(FileToUse, out var _Handler))
+                         ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
+                         string? filteredHost = null;
+                         ReadOnlySpan<char> hostSpan;
+                         if (!string.IsNullOrEmpty(config.FilterFromDomain)) // Optional domain filter
                          {
-                             while (pathLen > 2)
-                             {
-                                 pathLen--;
+                             filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
+                             hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
+                         }
+                         else hostSpan = _host;
+                         ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                                 pos = 0;
-                                 for (int i = 0; i < pathLen; i++)
-                                 {
-                                     string segment = pathBuffer[i];
-                                     segment.AsSpan().CopyTo(filePathBuffer.Slice(pos));
-                                     pos += segment.Length;
-
-                                     if (i < pathLen - 1)
-                                         filePathBuffer[pos++] = '/';
-                                 }
-
-                                 FileToUse = filePathBuffer.Slice(0, pos).ToString();
-
-                                 if (FileLead.TryGetValue(FileToUse, out _Handler))
-                                     break;
-                             }
+                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
+                         if (config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
+                         {
+                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                             _path = newPath.AsSpan(); // update the span used directly below
                          }
 
-                         if (_Handler != null)
+                         // Build hash incrementally — no buffer, no slashPositions needed
+                         const ulong FNV_OFFSET = 14695981039346656037UL;
+                         const ulong FNV_PRIME = 1099511628211UL;
+
+                         ulong hash = FNV_OFFSET;
+
+                         // Hash host (already case-folded by StripPort/filter)
+                         for (int k = 0; k < hostSpan.Length; k++)
                          {
-                             for (int i = 0; i < defaultHeaderCount; i++)
+                             char c = hostSpan[k];
+                             c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                             hash = (hash ^ c) * FNV_PRIME;
+                         }
+
+                         // Per-segment hash accumulation + snapshot after each segment
+                         Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
+                         int slashCount = 0;
+
+                         int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
+                         while (i < _path.Length)
+                         {
+                             if (_path[i] == '/') { i++; continue; }
+
+                             int segStart = i;
+                             while (i < _path.Length && _path[i] != '/') i++;
+
+                             ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
+
+                             if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
                              {
-                                 context.Response.Headers[defaultHeaderKeys[i]] = defaultHeaderValues[i]; // perhaps not necessary in 404NotFound?
-                             }
-                             int dotIndex = FileToUse.LastIndexOf('.');
-                             //string Ext = dotIndex >= 0 ? FileToUse[(dotIndex + 1)..] : "";
-                             if (dotIndex >= 0)
-                             {
-                                 string Ext = FileToUse[(dotIndex + 1)..];
-                                 if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
+                                 if (slashCount >= slashHashes.Length)
                                  {
-                                     for (int i = 0; i < ctype.Length; i += 2)
-                                     {
-                                         context.Response.Headers[ctype[i]] = ctype[i + 1];
-                                     }
+                                     context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
+                                     return;
+                                 }
+
+                                 // Snapshot hash before this segment (for fallback to parent directory)
+                                 slashHashes[slashCount++] = hash;
+
+                                 // Fold in '/' + segment chars
+                                 hash = (hash ^ '/') * FNV_PRIME;
+                                 for (int k = 0; k < segment.Length; k++)
+                                 {
+                                     char c = segment[k];
+                                     c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                     hash = (hash ^ c) * FNV_PRIME;
                                  }
                              }
-                             await _Handler(context, FileToUse);
+                             // no i++ — handled by leading check
+                         }
+
+                         // hash now represents the full path
+                         var headers = context.Response.Headers;
+                         if (FileLead.TryGetValue(hash, out var entry))
+                         {
+                             for (int j = 0; j < defaultHeaderCount; j++)
+                                 headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+
+                             if (entry.ContentTypeHeaders != null)
+                                 for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                     headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+
+                             await entry.Handler(context, entry.FilePath);
                              return;
                          }
-                     }
-#if DEBUG
-                     catch (Exception e)
-                     {
-                         Console.WriteLine(context.Request.Path);
-                         Console.WriteLine(context.Request.Headers.Range);
-                         Console.WriteLine(string.Join("\n", context.Response.Headers.Select(h => h.Key + ": " + h.Value)));
-                         Console.WriteLine(e);
-                     }
-#endif
-                     finally
-                     {
-                         ArrayPool<string>.Shared.Return(pathBuffer, clearArray: true);
-                     }
+                         else if (config.LoopFindEndpoint)
+                         {
+                             for (int s = slashCount - 1; s >= 0; s--)
+                             {
+                                 if (FileLead.TryGetValue(slashHashes[s], out entry))
+                                 {
+                                     for (int j = 0; j < defaultHeaderCount; j++)
+                                         headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
-                     context.Response.StatusCode = StatusCodes.Status404NotFound;
-                     await context.Response.WriteAsync(error404);
-                 });
-             });
+                                     if (entry.ContentTypeHeaders != null)
+                                         for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                             headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+
+                                     await entry.Handler(context, entry.FilePath);
+                                     return;
+                                 }
+                             }
+                         }
+
+                         context.Response.StatusCode = StatusCodes.Status404NotFound;
+                         if (ErrorDict.TryGetValue(hostValue, out var errHandler))
+                         {
+                             await errHandler(context);
+                             return;
+                         }
+                         await context.Response.WriteAsync(error404);
+                     });
+                });
 
                 Reload();
                 Task.Run(() =>
                 {
-                    IndexFiles(Program.BackendDir);
-                    IndexDirectories(Program.BackendDir);
-                    IndexErrorPages(Program.BackendDir);
+                    IndexFiles(BackendDir);
+                    IndexDirectories(BackendDir);
+                    IndexErrorPages(BackendDir);
                 });
-                SetupFileWatcher(Program.BackendDir);
+                SetupFileWatcher(BackendDir);
             }
         }
 
         public void Reload()
         {
-            foreach (KeyValuePair<string, string> ext in Program.config.ForwardExt)
+            foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
                 Extensions[ext.Key] = (context, path) =>
                 {
-                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
+                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value!.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
                     return ForwardRequestTo(context, targetUrl);
                 };
             }
@@ -288,10 +334,10 @@ namespace WebServer
         }
         public static void Reload2()
         {
-            defaultHeaderKeys = new string[Program.config.DefaultHeaders.Count];
-            defaultHeaderValues = new string[Program.config.DefaultHeaders.Count];
+            defaultHeaderKeys = new string[config.DefaultHeaders.Count];
+            defaultHeaderValues = new string[config.DefaultHeaders.Count];
             int idx = 0;
-            foreach (var kv in Program.config.DefaultHeaders)
+            foreach (var kv in config.DefaultHeaders)
             {
                 defaultHeaderKeys[idx] = kv.Key;
                 defaultHeaderValues[idx] = kv.Value;
@@ -299,16 +345,16 @@ namespace WebServer
             }
             defaultHeaderCount = defaultHeaderKeys.Length;
 
-            foreach (string ext in Program.config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            if (Program.config.Enable_PHP)
+            foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
+            if (config.Enable_PHP)
             {
-                FastCGI = new FastCGIClient(Program.config.PHP_FPM); //.Split(":")[0], int.Parse(Program.config.PHP_FPM.Split(":")[1]));
+                FastCGI = new FastCGIClient(config.PHP_FPM); //.Split(":")[0], int.Parse(Startup.config.PHP_FPM.Split(":")[1]));
             }
 
-            httpClient.Timeout = TimeSpan.FromSeconds(Program.config.HttpProxyTimeout);
+            httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
             handler.AllowAutoRedirect = false;
-            if (!Program.config.ForceTLS)
+            if (!config.ForceTLS)
             {
                 handler.ServerCertificateCustomValidationCallback = IgnoreCert;
                 handler.CheckCertificateRevocationList = false;
@@ -341,48 +387,19 @@ namespace WebServer
             */
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
         }
-        public static List<string> GetDomainBasedPath(HttpContext context)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
-            // Optionally, append the requested path if needed
-            string[]? requestPath = context.Request.Path.Value?.Trim('/')?.Split("/")?.Where(str => str != "")?.ToArray();
-            if (requestPath != null && requestPath.Contains("..")) requestPath = null;
-            List<string> fullPath = [Program.BackendDir, (Program.config.FilterFromDomain != "" ? context.Request.Host.Value.Split(':')[0].Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo) : context.Request.Host.Value.Split(':')[0])];
-            if (requestPath != null) fullPath.AddRange(requestPath);
-
-            return fullPath;
+            int colon = host.IndexOf(':');
+            return colon >= 0 ? host[..colon] : host;
         }
-        public static void GetDomainBasedPath(HttpContext context, Span<string> buffer, out int length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static string ExtractDomain(string folder)
         {
-            length = 0;
-
-            // BackendDir
-            buffer[length++] = Program.BackendDir;
-
-            // Host processing
-            string host = context.Request.Host.Value;
-            int colonIndex = host.IndexOf(':');
-            if (colonIndex != -1) host = host[..colonIndex];
-
-            if (!string.IsNullOrEmpty(Program.config.FilterFromDomain))
-                host = host.Replace(Program.config.FilterFromDomain, Program.config.DomainFilterTo);
-
-            buffer[length++] = host;
-
-            // Request path
-            ReadOnlySpan<char> path = context.Request.Path.Value.AsSpan().Trim('/');
-            int start = 0;
-            while (start < path.Length)
-            {
-                int sep = path.Slice(start).IndexOf('/');
-                if (sep == -1) sep = path.Length - start;
-
-                ReadOnlySpan<char> part = path.Slice(start, sep);
-                if (!part.SequenceEqual("..".AsSpan())) // prevent directory traversal
-                    buffer[length++] = part.ToString(); // unavoidable allocation here if you store strings
-
-                start += sep + 1;
-            }
+            int lastSlash = folder.LastIndexOf('/');
+            return lastSlash >= 0 ? folder[(lastSlash + 1)..] : folder;
         }
+
         // Sequential FNV-1a: host then path
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
@@ -522,7 +539,7 @@ namespace WebServer
         }
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
-            if (Program.config.MaxRequestBodySize != null && context.Request.ContentLength > Program.config.MaxRequestBodySize)
+            if (Startup.config.MaxRequestBodySize != null && context.Request.ContentLength > Startup.config.MaxRequestBodySize)
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
@@ -541,8 +558,8 @@ namespace WebServer
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
-                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
-                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout);
+                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
+                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
                     websockethandler.CookieContainer = new CookieContainer();
                     websockethandler.Credentials = client.Options.Credentials;
                     /*
@@ -554,7 +571,7 @@ namespace WebServer
                     client.Options.SetRequestHeader("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
                     
                     //client.Options.Cookies = new CookieContainer();
-                    string Domain = context.Request.Host.Value.Split(":")[0];
+                    string Domain = context.Request.Host.Value!.Split(":")[0];
                     context.Request.Cookies.ForEach((cookie) => {
                         Cookie cook = new Cookie(cookie.Key, cookie.Value);
                         try
@@ -570,7 +587,7 @@ namespace WebServer
                     {
                         HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
                         
-                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Program.config.WebSocketEndpointTimeout)).Token);
+                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, new CancellationTokenSource(TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout)).Token);
                     }
                     catch(Exception){
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
@@ -725,7 +742,7 @@ namespace WebServer
         {
             string[] getExt = file.Split('.');
             string Ext = getExt[getExt.Length - 1];
-            if (Program.config.Enable_CS)
+            if (config.Enable_CS)
             {
                 if (Ext == "_cs")
                 {
@@ -738,12 +755,12 @@ namespace WebServer
                     return;
                 }
             }
-            if (Program.config.Enable_PHP)
+            if (config.Enable_PHP)
             {
                 if (Ext == "php")
                 {
                     try {
-                        FileLead[file] = FastCGI.Run;
+                        AddToFileLead(file, FastCGI.Run);
                         //if (GenPhpAssembly(file)) LoadPhpAssembly(file); 
                     } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
                     return;
@@ -754,7 +771,7 @@ namespace WebServer
                     return;
                 }
             }
-            if(Program.config.Enable_WASM)
+            if(config.Enable_WASM)
             {
                 if(Ext == "_wasm")
                 {
@@ -768,13 +785,12 @@ namespace WebServer
             }
             if (Extensions.TryGetValue(Ext, out var Handler))
             {
-                FileLead[file] = Handler;
+                AddToFileLead(file, Handler);
                 if (Handler == DefDownload) CacheFileInfo(file);
             }
             else
             {
-                //string file2 = file;
-                FileLead[file] = DefHandle;
+                AddToFileLead(file, DefHandle);
                 CacheFileInfo(file);
             }
         }
@@ -784,7 +800,7 @@ namespace WebServer
                 FileInfo fileInfo = ThruSymlinks(file);
                 if(fileInfo != null) FileIndex[file] = new long[] { ((DateTimeOffset)fileInfo.LastWriteTimeUtc).ToUnixTimeSeconds(), fileInfo.Length };
             }catch(Exception){
-                FileLead.Remove(file, out _); // no func = error 404
+                RemoveFromFileLead(file); // no func = error 404
             } // non-existing files throw err
         }
         static FileInfo ThruSymlinks(string file)
@@ -798,9 +814,9 @@ namespace WebServer
                     foreach(string symlink in Linked) // Update all files linking to this file
                     {
                         string target = symlink;
-                        if (target.StartsWith(Program.BackendDir))
+                        if (target.StartsWith(Startup.BackendDir))
                         {
-                            target = target.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+                            target = target.Substring(Startup.BackendDir.Length); // Resolve relative to the symlink's directory
                         }
                         CacheFileInfo(target); // Update metadata for the symlink
                     }
@@ -824,9 +840,9 @@ namespace WebServer
                 fileInfo = new FileInfo(target);
             }
             string realFile = fileInfo.FullName.Replace(Path.DirectorySeparatorChar, '/');
-            if (realFile.StartsWith(Program.BackendDir))
+            if (realFile.StartsWith(BackendDir))
             {
-                realFile = realFile.Substring(Program.BackendDir.Length); // Resolve relative to the symlink's directory
+                realFile = realFile.Substring(BackendDir.Length); // Resolve relative to the symlink's directory
             }
             reverseSymlinkMap[realFile] = Symlinks;
             return fileInfo;
@@ -839,53 +855,121 @@ namespace WebServer
         }
         public static void IndexDirectory(string Folder)
         {
-            bool Any = false;
-            foreach (string File in Program.config.indexPriority)
+            ulong folderHash = HashSpan(Folder.AsSpan(BackendDir.Length));
+            bool any = false;
+
+            foreach (string file in config.indexPriority)
             {
-                string tmpfile = Path.Combine(Folder, File).Replace(Path.DirectorySeparatorChar, '/');
-                if (FileLead.TryGetValue(tmpfile, out var Handler))
+                string tmpfile = Path.Combine(Folder, file).Replace(Path.DirectorySeparatorChar, '/');
+                ulong tmpHash = HashSpan(tmpfile.AsSpan(BackendDir.Length));
+
+                if (FileLead.TryGetValue(tmpHash, out var existingEntry))
                 {
-                    string[] getExt = tmpfile.Split('.');
-                    string Ext = getExt[getExt.Length - 1];
-                    
-                    if (Program.config.OptExtTypes.TryGetValue(Ext, out string[]? ctype))
-                    {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; for (int i = 0; i < ctype.Length; i += 2){context.Response.Headers[ctype[i]] = ctype[i + 1];} return Handler(context, path); };
-                    }else
-                    {
-                        FileLead[Folder] = (context, path) => { path = path + "/" + File; return Handler(context, path); };
-                    }
-                    Any = true;
+                    FileLead[folderHash] = existingEntry; // reuse entire entry — same handler, path, content-type
+                    any = true;
                     break;
                 }
             }
-            if (!Any && FileLead.ContainsKey(Folder)) FileLead.Remove(Folder, out _);
+
+            if (!any)
+                FileLead.Remove(folderHash, out _);
         }
         public static void IndexErrorPages(string rootDirectory)
         {
-            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly)) // BackendDir: domain1, domain2, domain3
-            {
-                IndexErrorPage(Folder.Replace(Path.DirectorySeparatorChar, '/'));
-            }
+            foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
+                IndexErrorPage(folder.Replace(Path.DirectorySeparatorChar, '/'));
         }
         public static void IndexErrorPage(string Folder)
         {
             string tmpfile = Path.Combine(Folder, "error404.html").Replace(Path.DirectorySeparatorChar, '/');
-            if (FileLead.ContainsKey(tmpfile) && !FileLead.ContainsKey(Folder)) // error404.html exists
+            ulong tmpHash = HashSpan(tmpfile.AsSpan(BackendDir.Length));
+
+            if (!FileLead.TryGetValue(tmpHash, out _)) return; // error404.html not indexed
+
+            string dom = ExtractDomain(Folder);
+            ulong folderHash = HashSpan(Folder.AsSpan(BackendDir.Length));
+
+            try
             {
-                // Since we currently loop backwards (at around line 150) rather than give 404 by default,
-                // any time a 404 would be displayed is if /BackendDir/domain is not set.
-                try
+                string errcontent = File.ReadAllText(tmpfile);
+                string[] parts = errcontent.Split("${0}");
+                bool hasPlaceholder = parts.Length > 1;
+
+                if (hasPlaceholder)
                 {
-                    string errcontent = File.ReadAllText(tmpfile);
-                    FileLead[Folder] = async (context, path) => {
-                        context.Response.StatusCode = StatusCodes.Status404NotFound;
-                        await context.Response.WriteAsync(errcontent.Replace("${0}", context.Request.Headers.Referer != "" ? "<p>You came from <a href=\"" + context.Request.Headers.Referer + "\">" + context.Request.Headers.Referer + "</a>. Hmmm</p>" : ""));
+                    ErrorDict[dom] = async context =>
+                    {
+                        await context.Response.WriteAsync(parts[0]);
+                        if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                            await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                        await context.Response.WriteAsync(parts[1]);
                     };
+
+                    if (!FileLead.ContainsKey(folderHash))
+                    {
+                        Func<HttpContext, string, Task> fallback = async (context, path) =>
+                        {
+                            context.Response.StatusCode = StatusCodes.Status404NotFound;
+                            await context.Response.WriteAsync(parts[0]);
+                            if (!string.IsNullOrEmpty(context.Request.Headers.Referer))
+                                await context.Response.WriteAsync(context.Request.Headers.Referer!);
+                            await context.Response.WriteAsync(parts[1]);
+                        };
+                        FileLead[folderHash] = new EndpointEntry(fallback, Folder, null);
+                    }
                 }
-                catch (Exception) {}
+                else
+                {
+                    ErrorDict[dom] = async context =>
+                        await context.Response.WriteAsync(errcontent);
+
+                    if (!FileLead.ContainsKey(folderHash))
+                    {
+                        FileLead[folderHash] = new EndpointEntry(
+                            async (context, path) => await context.Response.WriteAsync(errcontent),
+                            Folder,
+                            null);
+                    }
+                }
             }
+            catch (Exception) { }
         }
+        public static void AddToFileLead(string fullPath, Func<HttpContext, string, Task> handler)
+        {
+            // Strip BackendDir — constant prefix, excluded from hash to match hot path
+            ReadOnlySpan<char> relative = fullPath.AsSpan(BackendDir.Length);
+            ulong hash = HashSpan(relative);
+            // Collision detection — fire at index time, zero hot path cost
+            if (FileLead.TryGetValue(hash, out var existing)
+                && !string.Equals(existing.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[WARN] Hash collision: {fullPath} collides with {existing.FilePath} — skipping");
+                Console.ResetColor();
+                return;
+            } // Same file re-indexed (e.g. file watcher update) — fall through and overwrite
+            FileLead[hash] = new EndpointEntry(handler, fullPath);
+        }
+        public static void RemoveFromFileLead(string file)
+        {
+            ulong hash = HashSpan(file.AsSpan(BackendDir.Length));
+            FileLead.Remove(hash, out _);
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong HashSpan(ReadOnlySpan<char> data)
+        {
+            ulong hash = 14695981039346656037UL;
+            for (int i = 0; i < data.Length; i++)
+            {
+                char c = data[i];
+                // Branch-free ASCII lowercase — valid for ASCII paths only
+                // Non-ASCII domain names would need UTF-8 encoding first
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                hash = (hash ^ c) * 1099511628211UL;
+            }
+            return hash;
+        }
+
         void SetupFileWatcher(string rootDirectory)
         {
             watcher = new FileSystemWatcher
@@ -939,9 +1023,9 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-            if ((Program.config.Enable_CS && filePath.EndsWith("._csdll")) || (Program.config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath.Substring(0, filePath.Length - 3);
+            if ((config.Enable_CS && filePath.EndsWith("._csdll")) || (config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath[..^3];
             FileIndex.TryRemove(filePath, out _);
-            FileLead.TryRemove(filePath, out _);
+            RemoveFromFileLead(filePath);
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
@@ -971,7 +1055,7 @@ namespace WebServer
                     return (Task)runMethod.Invoke(script, new object[] { context, path });
                 });
 
-                if (func != null) FileLead[filePath] = func;
+                if (func != null) AddToFileLead(filePath, func);
             }
             
             // Extract the function from the result
@@ -1019,13 +1103,13 @@ namespace WebServer
     typeof(Func<HttpContext, string, Task>), method
 );
 
-            FileLead[toFile] = func; // ._csdll -> ._cs
+            AddToFileLead(toFile, func); // ._csdll -> ._cs
             LiveAssemblies[toFile] = context;
         }
         public static void LoadWasm(string file)
         {
             var module = Wasm.Load(file);
-            FileLead[file] = async (context, path) =>
+            AddToFileLead(file, async (context, path) =>
             {
                 using var store = new Store(Wasm.WasmEngine);
                 var wasmCtx = new Wasm.WasmContext { Http = context };
@@ -1050,7 +1134,7 @@ namespace WebServer
                 handle();
 
                 await context.Response.BodyWriter.FlushAsync();
-            };
+            });
         }
 
         public static void LoadPhpAssembly(string filePath)
@@ -1070,7 +1154,7 @@ namespace WebServer
                 typeof(Func<HttpContext, string, Task>), method
             );
 
-            FileLead[filePath] = phpFunction;
+            AddToFileLead(filePath, phpFunction);
         }
         public static bool GenPhpAssembly(string filePath)
         {

@@ -19,7 +19,7 @@ namespace WebServer
         public async Task Invoke(HttpContext context)
         {
             string ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var tracker = _trackers.GetOrAdd(ip, _ => new BandwidthTracker(Program.config.MaxBytesPerSecond));
+            var tracker = _trackers.GetOrAdd(ip, _ => new BandwidthTracker(Startup.config.MaxBytesPerSecond));
             var originalBody = context.Features.Get<IHttpResponseBodyFeature>()!;
             var throttledBody = new ThrottledResponseBody(originalBody, tracker);
             context.Features.Set<IHttpResponseBodyFeature>(throttledBody);
