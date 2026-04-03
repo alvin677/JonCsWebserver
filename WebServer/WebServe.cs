@@ -268,11 +268,9 @@ namespace WebServer
                          }
 
                          // hash now represents the full path
-
+                         var headers = context.Response.Headers;
                          if (FileLead.TryGetValue(hash, out var entry))
                          {
-                             var headers = context.Response.Headers;
-
                              for (int j = 0; j < defaultHeaderCount; j++)
                                  headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
@@ -289,8 +287,6 @@ namespace WebServer
                              {
                                  if (FileLead.TryGetValue(slashHashes[s], out entry))
                                  {
-                                     var headers = context.Response.Headers;
-
                                      for (int j = 0; j < defaultHeaderCount; j++)
                                          headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
