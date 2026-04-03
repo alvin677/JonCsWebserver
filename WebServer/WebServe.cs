@@ -532,14 +532,13 @@ namespace WebServer
             UseCookies = false
         };
         private static readonly HttpClient httpClient = new HttpClient(handler);
-        private static readonly ClientWebSocket _proxyClient = new ClientWebSocket();
         private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
         {
             return true;
         }
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
-            if (Startup.config.MaxRequestBodySize != null && context.Request.ContentLength > Startup.config.MaxRequestBodySize)
+            if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 return;
@@ -558,8 +557,8 @@ namespace WebServer
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
-                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
-                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(Startup.config.WebSocketEndpointTimeout);
+                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
+                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
                     websockethandler.CookieContainer = new CookieContainer();
                     websockethandler.Credentials = client.Options.Credentials;
                     /*
@@ -664,7 +663,6 @@ namespace WebServer
                     {
                         context.Response.Headers[header.Key] = header.Value.ToArray();
                     }
-
                     // Stream the response body back to the client
                     using (var responseStream = await responseMessage.Content.ReadAsStreamAsync())
                     {
