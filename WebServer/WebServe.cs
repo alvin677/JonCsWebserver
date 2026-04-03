@@ -81,8 +81,8 @@ namespace WebServer
         public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>(StringComparer.OrdinalIgnoreCase);
         public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
-        private static readonly Dictionary<string, HashSet<string>> reverseSymlinkMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        private static readonly Dictionary<string, HotReloadContext> LiveAssemblies = new Dictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, HashSet<string>> reverseSymlinkMap = new ConcurrentDictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Startup.config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
@@ -1029,7 +1029,7 @@ namespace WebServer
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
-                LiveAssemblies.Remove(filePath);
+                LiveAssemblies.TryRemove(filePath, out _);
             }
         }
 
@@ -1070,7 +1070,7 @@ namespace WebServer
             if (LiveAssemblies.TryGetValue(toFile, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
-                LiveAssemblies.Remove(toFile);
+                LiveAssemblies.TryRemove(toFile, out _);
                 /*
                 FileLead.Remove(toFile, out _); // did not help
                 GC.Collect();
@@ -1139,7 +1139,7 @@ namespace WebServer
 
         public static void LoadPhpAssembly(string filePath)
         {
-            Assembly assembly = Assembly.Load(File.ReadAllBytes(filePath + "dll"));
+            Assembly assembly = Assembly.LoadFrom(filePath + "dll");
 
             Type? type = assembly.GetType("Is_PhpScript"); // namespace/class name in your PHP file.
             if (type == null)
