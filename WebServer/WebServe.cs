@@ -83,7 +83,8 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HashSet<string>> reverseSymlinkMap = new ConcurrentDictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Startup.config.ClearSessEveryXMin));
+        private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
+        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
@@ -297,6 +298,61 @@ namespace WebServer
                                      return;
                                  }
                              }
+                         }
+
+                         // .htaccess support
+                         if (HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
+                         {
+                             if (htRules.DenyAll)
+                             {
+                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                                 return;
+                             }
+
+                             string reqPath = context.Request.Path.Value ?? "/";
+
+                             foreach (var redirect in htRules.Redirects)
+                             {
+                                 if (redirect.Pattern.IsMatch(reqPath))
+                                 {
+                                     context.Response.StatusCode = redirect.StatusCode;
+                                     context.Response.Headers.Location = redirect.Target;
+                                     return;
+                                 }
+                             }
+
+                             foreach (var rewrite in htRules.Rewrites)
+                             {
+                                 // Evaluate conditions
+                                 bool condsPass = true;
+                                 foreach (var cond in rewrite.Conditions)
+                                 {
+                                     string testVal = ResolveTestString(cond.TestString, context);
+                                     bool matched = cond.Pattern.IsMatch(testVal);
+                                     if (cond.Negate) matched = !matched;
+                                     if (!matched) { condsPass = false; break; }
+                                 }
+                                 if (!condsPass) continue;
+
+                                 var match = rewrite.Pattern.Match(reqPath);
+                                 if (!match.Success) continue;
+
+                                 string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
+
+                                 if (rewrite.IsRedirect)
+                                 {
+                                     context.Response.StatusCode = rewrite.RedirectCode;
+                                     context.Response.Headers.Location = rewPath;
+                                     return;
+                                 }
+
+                                 // Internal rewrite — update path and re-lookup
+                                 context.Request.Path = new PathString(rewPath);
+                                 if (rewrite.IsLast) break;
+                             }
+
+                             foreach (var (key, value) in htRules.Headers)
+                                 context.Response.Headers[key] = value;
                          }
 
                          context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -872,7 +928,26 @@ namespace WebServer
 
             if (!any)
                 FileLead.TryRemove(folderHash, out _);
+
+            string htaccessPath = Path.Combine(Folder, ".htaccess").Replace(Path.DirectorySeparatorChar, '/');
+            HtaccessRules? htaccess = HtaccessParser.Parse(htaccessPath);
+            if (htaccess != null)
+                HtaccessMap[folderHash] = htaccess;
+            else
+                HtaccessMap.TryRemove(folderHash, out _);
         }
+        private static string ResolveTestString(string testString, HttpContext context) =>
+            testString.ToUpperInvariant() switch
+            {
+                "%{REQUEST_FILENAME}" => context.Request.Path.Value ?? "",
+                "%{REQUEST_URI}" => context.Request.Path.Value + context.Request.QueryString,
+                "%{QUERY_STRING}" => context.Request.QueryString.Value ?? "",
+                "%{HTTP_HOST}" => context.Request.Host.Value ?? "",
+                "%{REMOTE_ADDR}" => context.Connection.RemoteIpAddress?.ToString() ?? "",
+                "%{REQUEST_METHOD}" => context.Request.Method,
+                "%{HTTPS}" => context.Request.IsHttps ? "on" : "off",
+                _ => testString
+            };
         public static void IndexErrorPages(string rootDirectory)
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
