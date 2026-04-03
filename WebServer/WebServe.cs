@@ -872,7 +872,7 @@ namespace WebServer
             }
 
             if (!any)
-                FileLead.Remove(folderHash, out _);
+                FileLead.TryRemove(folderHash, out _);
         }
         public static void IndexErrorPages(string rootDirectory)
         {
@@ -953,7 +953,7 @@ namespace WebServer
         public static void RemoveFromFileLead(string file)
         {
             ulong hash = HashSpan(file.AsSpan(BackendDir.Length));
-            FileLead.Remove(hash, out _);
+            FileLead.TryRemove(hash, out _);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashSpan(ReadOnlySpan<char> data)
