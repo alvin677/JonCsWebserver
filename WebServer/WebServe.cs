@@ -811,9 +811,9 @@ namespace WebServer
                     foreach(string symlink in Linked) // Update all files linking to this file
                     {
                         string target = symlink;
-                        if (target.StartsWith(Startup.BackendDir))
+                        if (target.StartsWith(BackendDir))
                         {
-                            target = target.Substring(Startup.BackendDir.Length); // Resolve relative to the symlink's directory
+                            target = target.Substring(BackendDir.Length); // Resolve relative to the symlink's directory
                         }
                         CacheFileInfo(target); // Update metadata for the symlink
                     }
@@ -852,6 +852,8 @@ namespace WebServer
         }
         public static void IndexDirectory(string Folder)
         {
+            if (Folder.Length <= BackendDir.Length) return; // guard against malformed paths
+
             ulong folderHash = HashSpan(Folder.AsSpan(BackendDir.Length));
             bool any = false;
 
@@ -933,6 +935,7 @@ namespace WebServer
         }
         public static void AddToFileLead(string fullPath, Func<HttpContext, string, Task> handler)
         {
+            if (fullPath.Length <= BackendDir.Length) return;
             // Strip BackendDir — constant prefix, excluded from hash to match hot path
             ReadOnlySpan<char> relative = fullPath.AsSpan(BackendDir.Length);
             ulong hash = HashSpan(relative);
@@ -949,6 +952,7 @@ namespace WebServer
         }
         public static void RemoveFromFileLead(string file)
         {
+            if (file.Length <= BackendDir.Length) return;
             ulong hash = HashSpan(file.AsSpan(BackendDir.Length));
             FileLead.TryRemove(hash, out _);
         }
