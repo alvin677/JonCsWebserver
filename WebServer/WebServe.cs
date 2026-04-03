@@ -853,7 +853,6 @@ namespace WebServer
             foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories)) {
                 IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
             }
-            _frozenFileLead = FileLead.ToFrozenDictionary(); // Ensure index is updated
         }
         public static void IndexDirectory(string Folder)
         {
@@ -880,6 +879,7 @@ namespace WebServer
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
                 IndexErrorPage(folder.Replace(Path.DirectorySeparatorChar, '/'));
+            _frozenFileLead = FileLead.ToFrozenDictionary(); // Ensure index is updated
         }
         public static void IndexErrorPage(string Folder)
         {
