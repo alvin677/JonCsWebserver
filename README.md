@@ -264,13 +264,13 @@ running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
   
   HTTP
   ```bash
-  16 threads and 1000 connections
+  17 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     1.92ms    2.34ms  41.28ms   90.51%
-    Req/Sec    38.06k     3.36k   46.83k    78.49%
-  6080251 requests in 10.06s, 1.42GB read
-Requests/sec: 604439.62
-Transfer/sec:    144.11MB
+    Latency     1.62ms    1.66ms  28.45ms   90.02%
+    Req/Sec    39.33k     3.78k   58.37k    69.43%
+  10009386 requests in 15.08s, 2.33GB read
+Requests/sec: 663918.98
+Transfer/sec:    158.29MB
   12 threads and 2000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency     4.95ms    6.75ms 247.07ms   84.70%
@@ -331,13 +331,13 @@ Transfer/sec:    267.13MB
 
 HTTP
 ```
-  10 threads and 1000 connections
+  16 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     2.22ms    1.28ms  45.31ms   84.88%
-    Req/Sec    42.39k     3.26k   50.89k    70.07%
-  6341946 requests in 15.06s, 1.48GB read
-Requests/sec: 421237.96
-Transfer/sec:    100.43MB
+    Latency     2.17ms    1.17ms  52.97ms   88.05%
+    Req/Sec    28.43k     2.04k   55.09k    73.30%
+  27185445 requests in 1.00m, 6.34GB read
+Requests/sec: 452430.23
+Transfer/sec:    108.00MB
   10 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency     2.12ms    1.18ms  63.11ms   83.98%
