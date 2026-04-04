@@ -1,10 +1,7 @@
 ﻿using CSScripting;
 using CSScriptLib;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -12,29 +9,22 @@ using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Win32.SafeHandles;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using System.Diagnostics;
-using System.IO;
 using System.IO.Compression;
-using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
-using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
-using System.Runtime.Loader;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.RateLimiting;
 using Wasmtime;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace WebServer
 {
