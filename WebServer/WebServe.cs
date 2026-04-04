@@ -173,7 +173,7 @@ namespace WebServer
                         }));
                 app.UseRateLimiter(rate);
             }
-            app.UseResponseCompression();
+            if(config.CompressionLevel != CompressionLevel.NoCompression) app.UseResponseCompression();
 
             if (BackendDir != "")
             {
