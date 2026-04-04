@@ -37,9 +37,13 @@ namespace WebServer
 
     public class HtaccessRewriteCond
     {
-        public string TestString { get; init; } = ""; // e.g. %{REQUEST_FILENAME}
-        public Regex Pattern { get; init; } = null!;
+        public string TestString { get; init; } = "";
+        public Regex? Pattern { get; init; }        // null if special pattern
+        public string RawPattern { get; init; } = "";  // kept for special-case checks
         public bool Negate { get; init; }
+        public bool IsFileExists { get; init; }        // -f
+        public bool IsDirExists { get; init; }        // -d
+        public bool IsFileSymlink { get; init; }       // -l
     }
 
     public static class HtaccessParser
@@ -112,15 +116,28 @@ namespace WebServer
                         {
                             if (parts.Length < 3) break;
                             string testString = parts[1];
-                            string pattern = parts[2];
-                            bool negate = pattern.StartsWith('!');
-                            if (negate) pattern = pattern[1..];
+                            string rawPattern = parts[2];
+                            bool negate = rawPattern.StartsWith('!');
+                            if (negate) rawPattern = rawPattern[1..];
+
+                            // Handle special Apache condition patterns
+                            bool isFileExists = rawPattern == "-f";
+                            bool isDirExists = rawPattern == "-d";
+                            bool isFileSymlink = rawPattern == "-l";
+
+                            Regex? compiledPattern = (isFileExists || isDirExists || isFileSymlink)
+                                ? null
+                                : CompileRegex(rawPattern);
 
                             pendingConds.Add(new HtaccessRewriteCond
                             {
                                 TestString = testString,
-                                Pattern = CompileRegex(pattern),
-                                Negate = negate
+                                Pattern = compiledPattern,
+                                RawPattern = rawPattern,
+                                Negate = negate,
+                                IsFileExists = isFileExists,
+                                IsDirExists = isDirExists,
+                                IsFileSymlink = isFileSymlink
                             });
                             break;
                         }

@@ -300,7 +300,7 @@ namespace WebServer
                              }
                          }
 
-                         // .htaccess support
+                         // .htaccess support // Reuses hash, should have minor overhead.
                          if (HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
                          {
                              if (htRules.DenyAll)
@@ -328,7 +328,17 @@ namespace WebServer
                                  foreach (var cond in rewrite.Conditions)
                                  {
                                      string testVal = ResolveTestString(cond.TestString, context);
-                                     bool matched = cond.Pattern.IsMatch(testVal);
+                                     bool matched;
+
+                                     if (cond.IsFileExists)
+                                         matched = File.Exists(testVal);
+                                     else if (cond.IsDirExists)
+                                         matched = Directory.Exists(testVal);
+                                     else if (cond.IsFileSymlink)
+                                         matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
+                                     else
+                                         matched = cond.Pattern?.IsMatch(testVal) ?? false;
+
                                      if (cond.Negate) matched = !matched;
                                      if (!matched) { condsPass = false; break; }
                                  }
@@ -939,13 +949,19 @@ namespace WebServer
         private static string ResolveTestString(string testString, HttpContext context) =>
             testString.ToUpperInvariant() switch
             {
-                "%{REQUEST_FILENAME}" => context.Request.Path.Value ?? "",
+                "%{REQUEST_FILENAME}" => Path.Combine(BackendDir,
+                                             context.Request.Host.Value?.Split(':')[0] ?? "",
+                                             context.Request.Path.Value?.TrimStart('/') ?? ""),
                 "%{REQUEST_URI}" => context.Request.Path.Value + context.Request.QueryString,
                 "%{QUERY_STRING}" => context.Request.QueryString.Value ?? "",
                 "%{HTTP_HOST}" => context.Request.Host.Value ?? "",
                 "%{REMOTE_ADDR}" => context.Connection.RemoteIpAddress?.ToString() ?? "",
                 "%{REQUEST_METHOD}" => context.Request.Method,
                 "%{HTTPS}" => context.Request.IsHttps ? "on" : "off",
+                "%{SERVER_NAME}" => context.Request.Host.Host,
+                "%{SERVER_PORT}" => context.Request.Host.Port?.ToString() ?? (context.Request.IsHttps ? "443" : "80"),
+                "%{HTTP_REFERER}" => context.Request.Headers.Referer.ToString(),
+                "%{HTTP_USER_AGENT}" => context.Request.Headers.UserAgent.ToString(),
                 _ => testString
             };
         public static void IndexErrorPages(string rootDirectory)
