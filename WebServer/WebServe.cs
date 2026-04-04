@@ -300,7 +300,7 @@ namespace WebServer
                              }
                          }
 
-                         // .htaccess support // Reuses hash, should have minor overhead.
+                         // .htaccess support // Reuses hash, should have minimal overhead.
                          if (HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
                          {
                              if (htRules.DenyAll)
@@ -316,7 +316,7 @@ namespace WebServer
                                  if (redirect.Pattern.IsMatch(reqPath))
                                  {
                                      context.Response.StatusCode = redirect.StatusCode;
-                                     context.Response.Headers.Location = redirect.Target;
+                                     headers.Location = redirect.Target;
                                      return;
                                  }
                              }
@@ -352,7 +352,7 @@ namespace WebServer
                                  if (rewrite.IsRedirect)
                                  {
                                      context.Response.StatusCode = rewrite.RedirectCode;
-                                     context.Response.Headers.Location = rewPath;
+                                     headers.Location = rewPath;
                                      return;
                                  }
 
@@ -362,7 +362,7 @@ namespace WebServer
                              }
 
                              foreach (var (key, value) in htRules.Headers)
-                                 context.Response.Headers[key] = value;
+                                 headers[key] = value;
                          }
 
                          context.Response.StatusCode = StatusCodes.Status404NotFound;

@@ -28,7 +28,7 @@ public class FastCGIClient
     //private readonly string _host;
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
-    string LocalIP = IPFinder.GetLocalIPAddress();
+    private static readonly string LocalIP = IPFinder.GetLocalIPAddress();
     // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
     /*public FastCGIClient(string host = "127.0.0.1", int port = 9000)
     {

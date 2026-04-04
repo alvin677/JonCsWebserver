@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.CodeAnalysis;
@@ -143,6 +144,13 @@ public class Program
                             Console.WriteLine("Collecting..");
                             GC.Collect();
                             Console.WriteLine("Collected.");
+                            break;
+                        }
+                    case "memleak":
+                        {
+                            Console.WriteLine("FileLead: "+Startup.FileLead.Count);
+                            Console.WriteLine("FileIndex: "+Startup.FileIndex.Count);
+                            Console.WriteLine("Sessions: "+Startup.Sessions.Count);
                             break;
                         }
                     case "reload":
