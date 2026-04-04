@@ -210,7 +210,7 @@ namespace WebServer
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
                          // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
+                         if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
                          {
                              context.Request.Path = new PathString(newPath); // needed for C#-endpoints
                              _path = newPath.AsSpan(); // update the span used directly below
@@ -301,7 +301,7 @@ namespace WebServer
                          }
 
                          // .htaccess support // Reuses hash, should have minimal overhead.
-                         if (HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
+                         if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
                          {
                              if (htRules.DenyAll)
                              {
@@ -939,12 +939,15 @@ namespace WebServer
             if (!any)
                 FileLead.TryRemove(folderHash, out _);
 
-            string htaccessPath = Path.Combine(Folder, ".htaccess").Replace(Path.DirectorySeparatorChar, '/');
-            HtaccessRules? htaccess = HtaccessParser.Parse(htaccessPath);
-            if (htaccess != null)
-                HtaccessMap[folderHash] = htaccess;
-            else
-                HtaccessMap.TryRemove(folderHash, out _);
+            if (config.EnableHtaccess)
+            {
+                string htaccessPath = Path.Combine(Folder, ".htaccess").Replace(Path.DirectorySeparatorChar, '/');
+                HtaccessRules? htaccess = HtaccessParser.Parse(htaccessPath);
+                if (htaccess != null)
+                    HtaccessMap[folderHash] = htaccess;
+                else
+                    HtaccessMap.TryRemove(folderHash, out _);
+            }
         }
         private static string ResolveTestString(string testString, HttpContext context) =>
             testString.ToUpperInvariant() switch
