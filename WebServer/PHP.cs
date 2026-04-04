@@ -52,6 +52,7 @@ public class FastCGIClient
         public IPEndPoint? IpEndPoint { get; init; }
         public UnixDomainSocketEndPoint? UnixEndPoint { get; init; }
     }
+    /// <summary>Converts string into IPv4:port OR UnixSocket</summary>
     public static ConnectionInfo ParseEndpoint(string endpoint)
     {
         if (endpoint.Contains(':'))
@@ -148,7 +149,7 @@ public class FastCGIClient
         ushort id = ++requestId;
         return id != 0 ? id : ++requestId;
     }
-    // Static readonly — allocated once at startup, never again
+    /// <summary>Static readonly — allocated once at startup, never again</summary>
     private static readonly ReadOnlyMemory<byte> BeginRequestBody = new byte[]
     {
     0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN,
@@ -160,6 +161,7 @@ public class FastCGIClient
         if (!_connectionPool.TryDequeue(out TcpUnixClient? client) || !client.Connected)
         {
             client?.Close();
+            client?.Dispose();
             client = await TcpUnixClient.Create();
 #if DEBUG
             Console.WriteLine("Connecting new TcpClient.");
@@ -306,7 +308,7 @@ public class FastCGIClient
             }
         }
     }
-    // Extracted to keep the hot loop clean — parses PHP-FPM response headers directly from span
+    /// <summary>Extracted to keep the hot loop clean — parses PHP-FPM response headers directly from span</summary>
     private static void ParseAndApplyHeaders(ReadOnlySpan<byte> headerSpan, HttpContext context)
     {
         int lineStart = 0;
@@ -416,6 +418,7 @@ public class FastCGIClient
         dest[3] = (byte)len;
         return 4;
     }
+    /// <summary>Converts (Header: Value) into bytes</summary>
     private static int EncodeNameValuePair(string name, string value, Span<byte> dest)
     {
         int nameLen = Encoding.UTF8.GetByteCount(name);

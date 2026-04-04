@@ -460,7 +460,7 @@ namespace WebServer
             return lastSlash >= 0 ? folder[(lastSlash + 1)..] : folder;
         }
 
-        // Sequential FNV-1a: host then path
+        /// <summary>Sequential FNV-1a: host then path</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
@@ -522,7 +522,7 @@ namespace WebServer
 
             // await bodyWriter.CompleteAsync();
         }
-
+        /// <summary>Static file handling. Checks Last-modified, Range, and sets headers.</summary>
         public static async Task DefHandle(HttpContext context, string file)
         {
             if (context.Request.Method == HttpMethods.Options)
@@ -577,6 +577,7 @@ namespace WebServer
             if (context.Request.Method == HttpMethods.Head) return;
             await context.Response.SendFileAsync(file);
         }
+        /// <summary>Adds header to tell Client to download, then calls DefHandle.</summary>
         private static async Task DefDownload(HttpContext context, string file)
         {
             int slash = file.LastIndexOf('/');
@@ -592,6 +593,7 @@ namespace WebServer
         {
             return true;
         }
+        /// <summary>Proxies to a configured backend.</summary>
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
@@ -736,7 +738,8 @@ namespace WebServer
                 return;
             }
         }
-        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket) // user, proxyClient
+        /// <summary>user (client), proxyClient (endpoint)</summary>
+        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
             // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>
