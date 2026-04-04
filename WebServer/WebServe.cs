@@ -91,6 +91,10 @@ namespace WebServer
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
         };
+        public static int GetDictLenA() => reverseSymlinkMap.Count;
+        public static int GetDictLenB() => LiveAssemblies.Count;
+        public static int GetDictLenC() => HtaccessMap.Count;
+        public static int GetDictLenD() => _pending.Count;
 
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = new string[0];
@@ -201,20 +205,13 @@ namespace WebServer
                          ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
                          string? filteredHost = null;
                          ReadOnlySpan<char> hostSpan;
-                         if (!string.IsNullOrEmpty(config.FilterFromDomain)) // Optional domain filter
+                         if (config.DomainFilterEnabled) // Optional domain filter
                          {
                              filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
                              hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
                          }
                          else hostSpan = _host;
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-
-                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
-                         {
-                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
-                             _path = newPath.AsSpan(); // update the span used directly below
-                         }
 
                          // Build hash incrementally — no buffer, no slashPositions needed
                          const ulong FNV_OFFSET = 14695981039346656037UL;
@@ -228,6 +225,13 @@ namespace WebServer
                              char c = hostSpan[k];
                              c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                              hash = (hash ^ c) * FNV_PRIME;
+                         }
+
+                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
+                         if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
+                         {
+                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                             _path = newPath.AsSpan(); // update the span used directly below
                          }
 
                          // Per-segment hash accumulation + snapshot after each segment
@@ -490,7 +494,19 @@ namespace WebServer
 
             return hash;
         }
-        private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong HashHostAndPath(ulong hash, ReadOnlySpan<char> path)
+        {
+            for (int i = 0; i < path.Length; i++)
+            {
+                char c = path[i];
+                // If you want path to be case-sensitive, skip this line
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                hash = (hash ^ c) * 1099511628211UL;
+            }
+            return hash;
+        }
+        public static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
         {
             const int bufferSize = 16384; // 16 KB chunks
             System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
@@ -515,21 +531,6 @@ namespace WebServer
             }
 
             // await bodyWriter.CompleteAsync();
-        }
-        private static async Task StreamFileChunked(HttpContext context, string file, long start, long length)
-        {
-            await using FileStream fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
-            fileStream.Seek(start, SeekOrigin.Begin);
-
-            var buffer = new byte[8192];  // Chunk size
-            int bytesRead;
-            while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
-            {
-                await context.Response.Body.WriteAsync(buffer, 0, bytesRead);
-
-                // Ensure data is actually written to the client
-                await context.Response.Body.FlushAsync();
-            }
         }
 
         public static async Task DefHandle(HttpContext context, string file)

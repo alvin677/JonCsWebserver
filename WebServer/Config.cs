@@ -3,12 +3,15 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
+using Wasmtime;
 
 namespace WebServer
 {
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Config
     {
+        [JsonIgnore]
+        public bool DomainFilterEnabled { get; set; }
         public bool Logging { get; set; }
         public bool DebugPages { get; set; }
         public bool ServerMetrics { get; set; }
