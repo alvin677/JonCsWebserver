@@ -610,7 +610,7 @@ namespace WebServer
                     client.Options.CollectHttpResponseDetails = true;
                     //client.Options.HttpVersion = HttpVersion.Version11;
                     //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
-                    SocketsHttpHandler websockethandler = new SocketsHttpHandler
+                    using SocketsHttpHandler websockethandler = new SocketsHttpHandler
                     {
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
@@ -642,7 +642,7 @@ namespace WebServer
                     // client.Options.Cookies = CopyCookies;
                     try
                     {
-                        HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
+                        using HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
                         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.WebSocketEndpointTimeout));
                         await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, cts.Token);
                     }
@@ -657,7 +657,7 @@ namespace WebServer
                     await PipeSockets(webSocket, client);
                     return;
                 }
-                HttpRequestMessage requestMessage = new HttpRequestMessage
+                using HttpRequestMessage requestMessage = new HttpRequestMessage
                 {
                     Method = new HttpMethod(context.Request.Method),
                     RequestUri = new Uri(targetUrl),
