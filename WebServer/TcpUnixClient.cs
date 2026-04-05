@@ -39,17 +39,13 @@ public class TcpUnixClient : IDisposable
         switch (connectInfo.Type)
         {
             case EndpointType.IP:
-#pragma warning disable CS8602 // Dereference of a possibly null reference.
-                socket = new Socket(connectInfo.IpEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                socket = new Socket(connectInfo.IpEndPoint!.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(connectInfo.IpEndPoint);
-#pragma warning restore CS8602 // Dereference of a possibly null reference.
                 break;
 
             case EndpointType.Unix:
                 socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-#pragma warning disable CS8604 // Possible null reference argument.
-                await socket.ConnectAsync(connectInfo.UnixEndPoint);
-#pragma warning restore CS8604 // Possible null reference argument.
+                await socket.ConnectAsync(connectInfo.UnixEndPoint!);
                 break;
 
             default:

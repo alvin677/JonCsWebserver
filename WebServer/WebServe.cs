@@ -1,10 +1,7 @@
 ﻿using CSScripting;
 using CSScriptLib;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -12,29 +9,22 @@ using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Win32.SafeHandles;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using System.Diagnostics;
-using System.IO;
 using System.IO.Compression;
-using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
-using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
-using System.Runtime.Loader;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.RateLimiting;
 using Wasmtime;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace WebServer
 {
@@ -83,13 +73,18 @@ namespace WebServer
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HashSet<string>> reverseSymlinkMap = new ConcurrentDictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
-        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(Startup.config.ClearSessEveryXMin));
+        private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
+        private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
         public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
         };
+        public static int GetDictLenA() => reverseSymlinkMap.Count;
+        public static int GetDictLenB() => LiveAssemblies.Count;
+        public static int GetDictLenC() => HtaccessMap.Count;
+        public static int GetDictLenD() => _pending.Count;
 
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = new string[0];
@@ -178,7 +173,7 @@ namespace WebServer
                         }));
                 app.UseRateLimiter(rate);
             }
-            app.UseResponseCompression();
+            if(config.CompressionLevel != CompressionLevel.NoCompression) app.UseResponseCompression();
 
             if (BackendDir != "")
             {
@@ -200,20 +195,13 @@ namespace WebServer
                          ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
                          string? filteredHost = null;
                          ReadOnlySpan<char> hostSpan;
-                         if (!string.IsNullOrEmpty(config.FilterFromDomain)) // Optional domain filter
+                         if (config.DomainFilterEnabled) // Optional domain filter
                          {
                              filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
                              hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
                          }
                          else hostSpan = _host;
                          ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-
-                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (config.UrlAliasHash.TryGetValue(HashHostAndPath(hostSpan, _path), out string? newPath)) // rarely true. Only if webadmin has added values
-                         {
-                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
-                             _path = newPath.AsSpan(); // update the span used directly below
-                         }
 
                          // Build hash incrementally — no buffer, no slashPositions needed
                          const ulong FNV_OFFSET = 14695981039346656037UL;
@@ -227,6 +215,13 @@ namespace WebServer
                              char c = hostSpan[k];
                              c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                              hash = (hash ^ c) * FNV_PRIME;
+                         }
+
+                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
+                         if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
+                         {
+                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                             _path = newPath.AsSpan(); // update the span used directly below
                          }
 
                          // Per-segment hash accumulation + snapshot after each segment
@@ -297,6 +292,71 @@ namespace WebServer
                                      return;
                                  }
                              }
+                         }
+
+                         // .htaccess support // Reuses hash, should have minimal overhead.
+                         if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
+                         {
+                             if (htRules.DenyAll)
+                             {
+                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                                 return;
+                             }
+
+                             string reqPath = context.Request.Path.Value ?? "/";
+
+                             foreach (var redirect in htRules.Redirects)
+                             {
+                                 if (redirect.Pattern.IsMatch(reqPath))
+                                 {
+                                     context.Response.StatusCode = redirect.StatusCode;
+                                     headers.Location = redirect.Target;
+                                     return;
+                                 }
+                             }
+
+                             foreach (var rewrite in htRules.Rewrites)
+                             {
+                                 // Evaluate conditions
+                                 bool condsPass = true;
+                                 foreach (var cond in rewrite.Conditions)
+                                 {
+                                     string testVal = ResolveTestString(cond.TestString, context);
+                                     bool matched;
+
+                                     if (cond.IsFileExists)
+                                         matched = File.Exists(testVal);
+                                     else if (cond.IsDirExists)
+                                         matched = Directory.Exists(testVal);
+                                     else if (cond.IsFileSymlink)
+                                         matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
+                                     else
+                                         matched = cond.Pattern?.IsMatch(testVal) ?? false;
+
+                                     if (cond.Negate) matched = !matched;
+                                     if (!matched) { condsPass = false; break; }
+                                 }
+                                 if (!condsPass) continue;
+
+                                 var match = rewrite.Pattern.Match(reqPath);
+                                 if (!match.Success) continue;
+
+                                 string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
+
+                                 if (rewrite.IsRedirect)
+                                 {
+                                     context.Response.StatusCode = rewrite.RedirectCode;
+                                     headers.Location = rewPath;
+                                     return;
+                                 }
+
+                                 // Internal rewrite — update path and re-lookup
+                                 context.Request.Path = new PathString(rewPath);
+                                 if (rewrite.IsLast) break;
+                             }
+
+                             foreach (var (key, value) in htRules.Headers)
+                                 headers[key] = value;
                          }
 
                          context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -400,7 +460,7 @@ namespace WebServer
             return lastSlash >= 0 ? folder[(lastSlash + 1)..] : folder;
         }
 
-        // Sequential FNV-1a: host then path
+        /// <summary>Sequential FNV-1a: host then path</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
@@ -424,7 +484,19 @@ namespace WebServer
 
             return hash;
         }
-        private static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong HashHostAndPath(ulong hash, ReadOnlySpan<char> path)
+        {
+            for (int i = 0; i < path.Length; i++)
+            {
+                char c = path[i];
+                // If you want path to be case-sensitive, skip this line
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                hash = (hash ^ c) * 1099511628211UL;
+            }
+            return hash;
+        }
+        public static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
         {
             const int bufferSize = 16384; // 16 KB chunks
             System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
@@ -450,22 +522,7 @@ namespace WebServer
 
             // await bodyWriter.CompleteAsync();
         }
-        private static async Task StreamFileChunked(HttpContext context, string file, long start, long length)
-        {
-            await using FileStream fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
-            fileStream.Seek(start, SeekOrigin.Begin);
-
-            var buffer = new byte[8192];  // Chunk size
-            int bytesRead;
-            while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
-            {
-                await context.Response.Body.WriteAsync(buffer, 0, bytesRead);
-
-                // Ensure data is actually written to the client
-                await context.Response.Body.FlushAsync();
-            }
-        }
-
+        /// <summary>Static file handling. Checks Last-modified, Range, and sets headers.</summary>
         public static async Task DefHandle(HttpContext context, string file)
         {
             if (context.Request.Method == HttpMethods.Options)
@@ -520,6 +577,7 @@ namespace WebServer
             if (context.Request.Method == HttpMethods.Head) return;
             await context.Response.SendFileAsync(file);
         }
+        /// <summary>Adds header to tell Client to download, then calls DefHandle.</summary>
         private static async Task DefDownload(HttpContext context, string file)
         {
             int slash = file.LastIndexOf('/');
@@ -535,6 +593,7 @@ namespace WebServer
         {
             return true;
         }
+        /// <summary>Proxies to a configured backend.</summary>
         private async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
@@ -551,7 +610,7 @@ namespace WebServer
                     client.Options.CollectHttpResponseDetails = true;
                     //client.Options.HttpVersion = HttpVersion.Version11;
                     //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
-                    SocketsHttpHandler websockethandler = new SocketsHttpHandler
+                    using SocketsHttpHandler websockethandler = new SocketsHttpHandler
                     {
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
@@ -583,7 +642,7 @@ namespace WebServer
                     // client.Options.Cookies = CopyCookies;
                     try
                     {
-                        HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
+                        using HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
                         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.WebSocketEndpointTimeout));
                         await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, cts.Token);
                     }
@@ -598,7 +657,7 @@ namespace WebServer
                     await PipeSockets(webSocket, client);
                     return;
                 }
-                HttpRequestMessage requestMessage = new HttpRequestMessage
+                using HttpRequestMessage requestMessage = new HttpRequestMessage
                 {
                     Method = new HttpMethod(context.Request.Method),
                     RequestUri = new Uri(targetUrl),
@@ -679,7 +738,8 @@ namespace WebServer
                 return;
             }
         }
-        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket) // user, proxyClient
+        /// <summary>user (client), proxyClient (endpoint)</summary>
+        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
             // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>
@@ -872,7 +932,35 @@ namespace WebServer
 
             if (!any)
                 FileLead.TryRemove(folderHash, out _);
+
+            if (config.EnableHtaccess)
+            {
+                string htaccessPath = Path.Combine(Folder, ".htaccess").Replace(Path.DirectorySeparatorChar, '/');
+                HtaccessRules? htaccess = HtaccessParser.Parse(htaccessPath);
+                if (htaccess != null)
+                    HtaccessMap[folderHash] = htaccess;
+                else
+                    HtaccessMap.TryRemove(folderHash, out _);
+            }
         }
+        private static string ResolveTestString(string testString, HttpContext context) =>
+            testString.ToUpperInvariant() switch
+            {
+                "%{REQUEST_FILENAME}" => Path.Combine(BackendDir,
+                                             context.Request.Host.Value?.Split(':')[0] ?? "",
+                                             context.Request.Path.Value?.TrimStart('/') ?? ""),
+                "%{REQUEST_URI}" => context.Request.Path.Value + context.Request.QueryString,
+                "%{QUERY_STRING}" => context.Request.QueryString.Value ?? "",
+                "%{HTTP_HOST}" => context.Request.Host.Value ?? "",
+                "%{REMOTE_ADDR}" => context.Connection.RemoteIpAddress?.ToString() ?? "",
+                "%{REQUEST_METHOD}" => context.Request.Method,
+                "%{HTTPS}" => context.Request.IsHttps ? "on" : "off",
+                "%{SERVER_NAME}" => context.Request.Host.Host,
+                "%{SERVER_PORT}" => context.Request.Host.Port?.ToString() ?? (context.Request.IsHttps ? "443" : "80"),
+                "%{HTTP_REFERER}" => context.Request.Headers.Referer.ToString(),
+                "%{HTTP_USER_AGENT}" => context.Request.Headers.UserAgent.ToString(),
+                _ => testString
+            };
         public static void IndexErrorPages(string rootDirectory)
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))

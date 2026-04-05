@@ -7,11 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Xml.Linq;
 using WebServer;
 
 public class Program
@@ -30,6 +28,7 @@ public class Program
     public static void Main(string[] args)
     {
         Startup.config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+        Startup.config.DomainFilterEnabled = !string.IsNullOrEmpty(Startup.config.FilterFromDomain);
         Startup.config.FriendlyHeadersToOptimized();
         Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? Startup.config.CertDir;
@@ -145,9 +144,21 @@ public class Program
                             Console.WriteLine("Collected.");
                             break;
                         }
+                    case "memleak":
+                        {
+                            Console.WriteLine("FileLead: "+Startup.FileLead.Count);
+                            Console.WriteLine("FileIndex: "+Startup.FileIndex.Count);
+                            Console.WriteLine("Sessions: "+Startup.Sessions.Count);
+                            Console.WriteLine("reverseSymlink: "+Startup.GetDictLenA());
+                            Console.WriteLine("LiveAssemblies: "+Startup.GetDictLenB());
+                            Console.WriteLine("HtaccessMap: "+Startup.GetDictLenC());
+                            Console.WriteLine("_pending: " + Startup.GetDictLenD());
+                            break;
+                        }
                     case "reload":
                         {
                             Startup.config = Config.Load(Path.Combine(Directory.GetCurrentDirectory(), "JonCsWebConfig.json"));
+                            Startup.config.DomainFilterEnabled = !string.IsNullOrEmpty(Startup.config.FilterFromDomain);
                             Startup.config.FriendlyHeadersToOptimized();
                             Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
                             _ = Task.Run(()=>Startup.Reload2());

@@ -1,18 +1,19 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
+﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Newtonsoft.Json;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection.PortableExecutable;
 
 namespace WebServer
 {
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Config
     {
+        [JsonIgnore]
+        public bool DomainFilterEnabled { get; set; }
         public bool Logging { get; set; }
         public bool DebugPages { get; set; }
         public bool ServerMetrics { get; set; }
         public bool LoopFindEndpoint { get; set; }
+        public bool EnableHtaccess { get; set; }
         public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
@@ -121,6 +122,7 @@ namespace WebServer
             DebugPages = false;
             ServerMetrics = false;
             LoopFindEndpoint = false;
+            EnableHtaccess = false;
             Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
