@@ -851,6 +851,7 @@ namespace WebServer
                 CacheFileInfo(file);
             }
         }
+        /// <summary>Checks Symlinks, then caches FileSize and LastModified</summary>
         public static void CacheFileInfo(string file) {
             try
             {
@@ -1021,6 +1022,7 @@ namespace WebServer
             }
             catch (Exception) { }
         }
+        /// <summary>Trims BackendDir, and hashes fullPath, then uses the function in FileLead-Dictionary</summary>
         public static void AddToFileLead(string fullPath, Func<HttpContext, string, Task> handler)
         {
             if (fullPath.Length <= BackendDir.Length) return;
@@ -1121,7 +1123,7 @@ namespace WebServer
                 LiveAssemblies.TryRemove(filePath, out _);
             }
         }
-
+        /// <summary>Converts ._cs into Assembly</summary>
         public static void CompileAndAddFunction(string filePath)
         {
             // Read the code from the file
@@ -1146,12 +1148,8 @@ namespace WebServer
 
                 if (func != null) AddToFileLead(filePath, func);
             }
-            
-            // Extract the function from the result
-            //Func<HttpContext, string, Task>? func = script.Run;
-            //if (func != null) FileLead[filePath] = func;
         }
-
+        /// <summary>Loads file as a Csharp Assembly, adds instant call to it inside FileLead-Dictionary.</summary>
         public static void LoadCompiledFunc(string file)
         {
             string toFile = file[..^3];
@@ -1225,10 +1223,18 @@ namespace WebServer
                 await context.Response.BodyWriter.FlushAsync();
             });
         }
-
+        /// <summary>Same as LoadCompiledFunc</summary>
         public static void LoadPhpAssembly(string filePath)
         {
-            Assembly assembly = Assembly.LoadFrom(filePath + "dll");
+            // string toFile = filePath[..^3];
+            // Clear old Assembly from mem
+            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
+            {
+                ctx?.Unload();
+                LiveAssemblies.TryRemove(filePath, out _);
+            }
+            HotReloadContext context = new HotReloadContext(filePath);
+            Assembly assembly = context.LoadFromAssemblyPath(filePath);
 
             Type? type = assembly.GetType("Is_PhpScript"); // namespace/class name in your PHP file.
             if (type == null)
@@ -1244,7 +1250,9 @@ namespace WebServer
             );
 
             AddToFileLead(filePath, phpFunction);
+            LiveAssemblies[filePath] = context;
         }
+        /// <summary>Uses ppc to compile .php into .phpdll</summary>
         public static bool GenPhpAssembly(string filePath)
         {
             try
