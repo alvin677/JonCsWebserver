@@ -38,6 +38,9 @@ jobs:
           - rid: osx-arm64
             output_name: WebServer.osx-arm64
             output_name_lite: WebServer_lite.osx-arm64
+          - rid: android-arm64
+            output_name: WebServer.android
+            outout_name_lite: WebServer_lite.android
 #           - rid: win-arm
 #            output_name: WebServer_arm.exe
 #            output_name_lite: WebServer_lite_arm.exe
