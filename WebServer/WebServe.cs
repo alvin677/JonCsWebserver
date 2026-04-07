@@ -181,193 +181,195 @@ namespace WebServer
                     BackendDir += '/'; // avoid per-req addition
                 // ReadOnlyMemory<char> BackendDirMemory = BackendDir.AsMemory();
                 app.UseWebSockets();
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
+                // app.UseRouting();
+                //app.UseEndpoints(endpoints =>
+                //{
+                    //endpoints.Map("/{**catchAll}", async context =>
+                app.Use(async(context, next) =>
                 {
-                    endpoints.Map("/{**catchAll}", async context =>
-                     {
-                         var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
-                         if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
-                         {
-                             context.Request.Host = new HostString(OtherDomain);
-                             hostValue = OtherDomain;
-                         }
-                         ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
-                         string? filteredHost = null;
-                         ReadOnlySpan<char> hostSpan;
-                         if (config.DomainFilterEnabled) // Optional domain filter
-                         {
-                             filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
-                             hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
-                         }
-                         else hostSpan = _host;
-                         ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
+                    var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
+                    if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
+                    {
+                        context.Request.Host = new HostString(OtherDomain);
+                        hostValue = OtherDomain;
+                    }
+                    ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
+                    string? filteredHost = null;
+                    ReadOnlySpan<char> hostSpan;
+                    if (config.DomainFilterEnabled) // Optional domain filter
+                    {
+                        filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
+                        hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
+                    }
+                    else hostSpan = _host;
+                    ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                         // Build hash incrementally — no buffer, no slashPositions needed
-                         const ulong FNV_OFFSET = 14695981039346656037UL;
-                         const ulong FNV_PRIME = 1099511628211UL;
+                    // Build hash incrementally — no buffer, no slashPositions needed
+                    const ulong FNV_OFFSET = 14695981039346656037UL;
+                    const ulong FNV_PRIME = 1099511628211UL;
 
-                         ulong hash = FNV_OFFSET;
+                    ulong hash = FNV_OFFSET;
 
-                         // Hash host (already case-folded by StripPort/filter)
-                         for (int k = 0; k < hostSpan.Length; k++)
-                         {
-                             char c = hostSpan[k];
-                             c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                             hash = (hash ^ c) * FNV_PRIME;
-                         }
+                    // Hash host (already case-folded by StripPort/filter)
+                    for (int k = 0; k < hostSpan.Length; k++)
+                    {
+                        char c = hostSpan[k];
+                        c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                        hash = (hash ^ c) * FNV_PRIME;
+                    }
 
-                         // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                         if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
-                         {
-                             context.Request.Path = new PathString(newPath); // needed for C#-endpoints
-                             _path = newPath.AsSpan(); // update the span used directly below
-                         }
+                    // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
+                    if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
+                    {
+                        context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                        _path = newPath.AsSpan(); // update the span used directly below
+                    }
 
-                         // Per-segment hash accumulation + snapshot after each segment
-                         Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
-                         int slashCount = 0;
+                    // Per-segment hash accumulation + snapshot after each segment
+                    Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
+                    int slashCount = 0;
 
-                         int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
-                         while (i < _path.Length)
-                         {
-                             if (_path[i] == '/') { i++; continue; }
+                    int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
+                    while (i < _path.Length)
+                    {
+                        if (_path[i] == '/') { i++; continue; }
 
-                             int segStart = i;
-                             while (i < _path.Length && _path[i] != '/') i++;
+                        int segStart = i;
+                        while (i < _path.Length && _path[i] != '/') i++;
 
-                             ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
+                        ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
 
-                             if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
-                             {
-                                 if (slashCount >= slashHashes.Length)
-                                 {
-                                     context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                     return;
-                                 }
+                        if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
+                        {
+                            if (slashCount >= slashHashes.Length)
+                            {
+                                context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
+                                return;
+                            }
 
-                                 // Snapshot hash before this segment (for fallback to parent directory)
-                                 slashHashes[slashCount++] = hash;
+                            // Snapshot hash before this segment (for fallback to parent directory)
+                            slashHashes[slashCount++] = hash;
 
-                                 // Fold in '/' + segment chars
-                                 hash = (hash ^ '/') * FNV_PRIME;
-                                 for (int k = 0; k < segment.Length; k++)
-                                 {
-                                     char c = segment[k];
-                                     c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                                     hash = (hash ^ c) * FNV_PRIME;
-                                 }
-                             }
-                             // no i++ — handled by leading check
-                         }
+                            // Fold in '/' + segment chars
+                            hash = (hash ^ '/') * FNV_PRIME;
+                            for (int k = 0; k < segment.Length; k++)
+                            {
+                                char c = segment[k];
+                                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                hash = (hash ^ c) * FNV_PRIME;
+                            }
+                        }
+                        // no i++ — handled by leading check
+                    }
 
-                         // hash now represents the full path
-                         var headers = context.Response.Headers;
-                         if (FileLead.TryGetValue(hash, out var entry))
-                         {
-                             for (int j = 0; j < defaultHeaderCount; j++)
-                                 headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+                    // hash now represents the full path
+                    var headers = context.Response.Headers;
+                    if (FileLead.TryGetValue(hash, out var entry))
+                    {
+                        for (int j = 0; j < defaultHeaderCount; j++)
+                            headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
-                             if (entry.ContentTypeHeaders != null)
-                                 for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
-                                     headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+                        if (entry.ContentTypeHeaders != null)
+                            for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                             await entry.Handler(context, entry.FilePath);
-                             return;
-                         }
-                         else if (config.LoopFindEndpoint)
-                         {
-                             for (int s = slashCount - 1; s >= 0; s--)
-                             {
-                                 if (FileLead.TryGetValue(slashHashes[s], out entry))
-                                 {
-                                     for (int j = 0; j < defaultHeaderCount; j++)
-                                         headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+                        await entry.Handler(context, entry.FilePath);
+                        return;
+                    }
+                    else if (config.LoopFindEndpoint)
+                    {
+                        for (int s = slashCount - 1; s >= 0; s--)
+                        {
+                            if (FileLead.TryGetValue(slashHashes[s], out entry))
+                            {
+                                for (int j = 0; j < defaultHeaderCount; j++)
+                                    headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
-                                     if (entry.ContentTypeHeaders != null)
-                                         for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
-                                             headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+                                if (entry.ContentTypeHeaders != null)
+                                    for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                        headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                                     await entry.Handler(context, entry.FilePath);
-                                     return;
-                                 }
-                             }
-                         }
+                                await entry.Handler(context, entry.FilePath);
+                                return;
+                            }
+                        }
+                    }
 
-                         // .htaccess support // Reuses hash, should have minimal overhead.
-                         if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
-                         {
-                             if (htRules.DenyAll)
-                             {
-                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                                 return;
-                             }
+                    // .htaccess support // Reuses hash, should have minimal overhead.
+                    if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
+                    {
+                        if (htRules.DenyAll)
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            return;
+                        }
 
-                             string reqPath = context.Request.Path.Value ?? "/";
+                        string reqPath = context.Request.Path.Value ?? "/";
 
-                             foreach (var redirect in htRules.Redirects)
-                             {
-                                 if (redirect.Pattern.IsMatch(reqPath))
-                                 {
-                                     context.Response.StatusCode = redirect.StatusCode;
-                                     headers.Location = redirect.Target;
-                                     return;
-                                 }
-                             }
+                        foreach (var redirect in htRules.Redirects)
+                        {
+                            if (redirect.Pattern.IsMatch(reqPath))
+                            {
+                                context.Response.StatusCode = redirect.StatusCode;
+                                headers.Location = redirect.Target;
+                                return;
+                            }
+                        }
 
-                             foreach (var rewrite in htRules.Rewrites)
-                             {
-                                 // Evaluate conditions
-                                 bool condsPass = true;
-                                 foreach (var cond in rewrite.Conditions)
-                                 {
-                                     string testVal = ResolveTestString(cond.TestString, context);
-                                     bool matched;
+                        foreach (var rewrite in htRules.Rewrites)
+                        {
+                            // Evaluate conditions
+                            bool condsPass = true;
+                            foreach (var cond in rewrite.Conditions)
+                            {
+                                string testVal = ResolveTestString(cond.TestString, context);
+                                bool matched;
 
-                                     if (cond.IsFileExists)
-                                         matched = File.Exists(testVal);
-                                     else if (cond.IsDirExists)
-                                         matched = Directory.Exists(testVal);
-                                     else if (cond.IsFileSymlink)
-                                         matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
-                                     else
-                                         matched = cond.Pattern?.IsMatch(testVal) ?? false;
+                                if (cond.IsFileExists)
+                                    matched = File.Exists(testVal);
+                                else if (cond.IsDirExists)
+                                    matched = Directory.Exists(testVal);
+                                else if (cond.IsFileSymlink)
+                                    matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
+                                else
+                                    matched = cond.Pattern?.IsMatch(testVal) ?? false;
 
-                                     if (cond.Negate) matched = !matched;
-                                     if (!matched) { condsPass = false; break; }
-                                 }
-                                 if (!condsPass) continue;
+                                if (cond.Negate) matched = !matched;
+                                if (!matched) { condsPass = false; break; }
+                            }
+                            if (!condsPass) continue;
 
-                                 var match = rewrite.Pattern.Match(reqPath);
-                                 if (!match.Success) continue;
+                            var match = rewrite.Pattern.Match(reqPath);
+                            if (!match.Success) continue;
 
-                                 string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
+                            string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
 
-                                 if (rewrite.IsRedirect)
-                                 {
-                                     context.Response.StatusCode = rewrite.RedirectCode;
-                                     headers.Location = rewPath;
-                                     return;
-                                 }
+                            if (rewrite.IsRedirect)
+                            {
+                                context.Response.StatusCode = rewrite.RedirectCode;
+                                headers.Location = rewPath;
+                                return;
+                            }
 
-                                 // Internal rewrite — update path and re-lookup
-                                 context.Request.Path = new PathString(rewPath);
-                                 if (rewrite.IsLast) break;
-                             }
+                            // Internal rewrite — update path and re-lookup
+                            context.Request.Path = new PathString(rewPath);
+                            if (rewrite.IsLast) break;
+                        }
 
-                             foreach (var (key, value) in htRules.Headers)
-                                 headers[key] = value;
-                         }
+                        foreach (var (key, value) in htRules.Headers)
+                            headers[key] = value;
+                    }
 
-                         context.Response.StatusCode = StatusCodes.Status404NotFound;
-                         if (ErrorDict.TryGetValue(hostValue, out var errHandler))
-                         {
-                             await errHandler(context);
-                             return;
-                         }
-                         await context.Response.WriteAsync(error404);
-                     });
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    if (ErrorDict.TryGetValue(hostValue, out var errHandler))
+                    {
+                        await errHandler(context);
+                        return;
+                    }
+                    await context.Response.WriteAsync(error404);
+                    await next(context);
                 });
+                //});
 
                 Reload();
                 Task.Run(() =>
@@ -605,8 +607,8 @@ namespace WebServer
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
-                    WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    ClientWebSocket client = new ClientWebSocket();
+                    using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    using ClientWebSocket client = new ClientWebSocket();
                     client.Options.CollectHttpResponseDetails = true;
                     //client.Options.HttpVersion = HttpVersion.Version11;
                     //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
@@ -783,6 +785,8 @@ namespace WebServer
 
             // Wait for either direction to close.
             await Task.WhenAny(serverToClient, clientToServer);
+            // await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
+            // clientWebSocket.Dispose();
         }
 
         public static void IndexFiles(string rootDirectory)
@@ -1079,6 +1083,7 @@ namespace WebServer
                 RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
                 OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             };
+            watcher.Error += (sender, e) => Console.Error.WriteLine("[WARN] FileSystemWatcher buffer overflow: "+e.GetException().Message);
 
             watcher.EnableRaisingEvents = true;
         }
