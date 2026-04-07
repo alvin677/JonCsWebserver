@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishAot>false</PublishAot>
+    <Copyright>Copyright (C) 2026, JonHosting.com</Copyright>
+    <PackageProjectUrl>https://github.com/alvin677/JonCsWebServer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alvin677/JonCsWebServer</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,5 +43,4 @@
     <PackageReference Include="Z.Expressions.Eval" Version="6.3.9" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
-
 </Project>
