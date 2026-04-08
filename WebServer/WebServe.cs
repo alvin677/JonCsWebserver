@@ -382,8 +382,19 @@ namespace WebServer
             }
         }
 
-        public void Reload()
+        public static void Reload()
         {
+            defaultHeaderKeys = new string[config.DefaultHeaders.Count];
+            defaultHeaderValues = new string[config.DefaultHeaders.Count];
+            int idx = 0;
+            foreach (var kv in config.DefaultHeaders)
+            {
+                defaultHeaderKeys[idx] = kv.Key;
+                defaultHeaderValues[idx] = kv.Value;
+                idx++;
+            }
+            defaultHeaderCount = defaultHeaderKeys.Length;
+
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
                 string target = ext.Value;
@@ -407,26 +418,7 @@ namespace WebServer
                     };
                 }
             }
-            Reload2();
-        }
-        public static void Reload2()
-        {
-            defaultHeaderKeys = new string[config.DefaultHeaders.Count];
-            defaultHeaderValues = new string[config.DefaultHeaders.Count];
-            int idx = 0;
-            foreach (var kv in config.DefaultHeaders)
-            {
-                defaultHeaderKeys[idx] = kv.Key;
-                defaultHeaderValues[idx] = kv.Value;
-                idx++;
-            }
-            defaultHeaderCount = defaultHeaderKeys.Length;
-
             foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            /*if (config.Enable_PHP)
-            {
-                FastCGI = new FastCGIClient(config.PHP_FPM); //.Split(":")[0], int.Parse(Startup.config.PHP_FPM.Split(":")[1]));
-            }*/
 
             httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -611,7 +603,7 @@ namespace WebServer
             return true;
         }
         /// <summary>Proxies to a configured backend.</summary>
-        private async Task ForwardRequestTo(HttpContext context, string targetUrl)
+        private static async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
             {
@@ -756,7 +748,7 @@ namespace WebServer
             }
         }
         /// <summary>user (client), proxyClient (endpoint)</summary>
-        private async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
+        private static async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
             // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>

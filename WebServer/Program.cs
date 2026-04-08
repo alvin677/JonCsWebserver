@@ -161,7 +161,7 @@ public class Program
                             Startup.config.DomainFilterEnabled = !string.IsNullOrEmpty(Startup.config.FilterFromDomain);
                             Startup.config.FriendlyHeadersToOptimized();
                             Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
-                            _ = Task.Run(()=>Startup.Reload2());
+                            _ = Task.Run(()=>Startup.Reload());
                             Console.WriteLine("Reloaded!");
                             break;
                         }
