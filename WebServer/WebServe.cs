@@ -79,7 +79,9 @@ namespace WebServer
         // public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
+            MaxDegreeOfParallelism = Environment.ProcessorCount > 12
+            ? Environment.ProcessorCount / 2
+            : Math.Max(1, Environment.ProcessorCount - 2) // leave 2 cores for Kestrel
         };
         public static int GetDictLenA() => reverseSymlinkMap.Count;
         public static int GetDictLenB() => LiveAssemblies.Count;
