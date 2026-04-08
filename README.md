@@ -22,7 +22,8 @@ Using our `--backend` works very well for serving static files too.
 ```json
   "ForwardExt": {
     "deno": "https://{domain}:8443",
-    "bun": "http://{domain}:3000"
+    "bun": "http://{domain}:3000",
+    "php": "fcgi:///run/php/php8.2-fpm.sock"
   }
 ```
 In the example above, `files.deno` would be proxied to https://sameDomain:8443/samePath?sameQuery, and `files.bun` would be proxied to http://sameDomain:3000/samePath?sameQuery<br/>
