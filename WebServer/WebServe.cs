@@ -394,7 +394,7 @@ namespace WebServer
                 idx++;
             }
             defaultHeaderCount = defaultHeaderKeys.Length;
-
+            Extensions.Clear();
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
                 string target = ext.Value;
