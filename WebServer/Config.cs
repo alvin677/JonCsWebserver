@@ -158,7 +158,7 @@ namespace WebServer
             FilterFromDomain = "";
             DomainFilterTo = "";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index._wasm", "index.njs", "index.bun", "index.html", "index.htm"];
+            indexPriority = ["index._csdll", "index._cs", "index.php", "index._wasm", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
             DownloadIfExtension = [
             "zip", "tar", "gz", "rar",
