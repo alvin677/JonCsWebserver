@@ -9,6 +9,7 @@
     <Copyright>Copyright (C) 2026, JonHosting.com</Copyright>
     <PackageProjectUrl>https://github.com/alvin677/JonCsWebServer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alvin677/JonCsWebServer</RepositoryUrl>
+    <Authors>$(AssemblyName), JonHosting</Authors>
   </PropertyGroup>
 
   <ItemGroup>

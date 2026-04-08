@@ -75,11 +75,13 @@ namespace WebServer
         private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
-        private FileSystemWatcher watcher = new FileSystemWatcher { };
+        private static FileSystemWatcher watcher = new FileSystemWatcher { };
         // public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
+            MaxDegreeOfParallelism = Environment.ProcessorCount > 12
+            ? Environment.ProcessorCount / 2
+            : Math.Max(1, Environment.ProcessorCount - 2) // leave 2 cores for Kestrel
         };
         public static int GetDictLenA() => reverseSymlinkMap.Count;
         public static int GetDictLenB() => LiveAssemblies.Count;
@@ -455,7 +457,42 @@ namespace WebServer
             catch (Exception e) { Console.WriteLine(e.Message); }
             */
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
+            ReloadBackendDir(config.BackendDir);
         }
+        public static void ReloadBackendDir(string newBackendDir)
+        {
+            if (!string.IsNullOrEmpty(newBackendDir) && string.IsNullOrEmpty(Program.BackendDir)) // Only if CLI arg is/was not set
+            {
+                if (!newBackendDir.EndsWith('/'))
+                    newBackendDir += '/'; // avoid per-req addition
+                if (!newBackendDir.Equals(BackendDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[Reload] BackendDir changed: {BackendDir} -> {newBackendDir} | [WARN] Brief downtime while re-indexing files");
+
+                    // 1. Clear existing index
+                    FileLead.Clear();
+                    FileIndex.Clear();
+                    HtaccessMap.Clear();
+                    reverseSymlinkMap.Clear();
+                    foreach(var ent in LiveAssemblies)
+                    {
+                        ent.Value.Unload();
+                    }
+                    LiveAssemblies.Clear();
+
+                    // 2. Update BackendDir reference
+                    BackendDir = newBackendDir;
+
+                    SetupFileWatcher(BackendDir);
+
+                    // 3. Rebuild file index
+                    IndexFiles(BackendDir);
+                    IndexDirectories(BackendDir);
+                    IndexErrorPages(BackendDir);
+                }
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
@@ -1056,8 +1093,9 @@ namespace WebServer
             return hash;
         }
 
-        void SetupFileWatcher(string rootDirectory)
+        static void SetupFileWatcher(string rootDirectory)
         {
+            watcher.Dispose();
             watcher = new FileSystemWatcher
             {
                 Path = rootDirectory,
@@ -1068,11 +1106,16 @@ namespace WebServer
 
             watcher.Created += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             watcher.Changed += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
-            watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Deleted += (sender, e) =>
+            {
+                string fullFile = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
+                RemoveFromIndex(fullFile);
+                UpdateIndex(fullFile); // updates directory i.e. with new index.html
+            };
             watcher.Renamed += (sender, e) =>
             {
                 RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
-                OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+                UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/')); // No need to delay on rename
             };
             watcher.Error += (sender, e) => Console.Error.WriteLine("[WARN] FileSystemWatcher buffer overflow: "+e.GetException().Message);
 
@@ -1081,7 +1124,7 @@ namespace WebServer
 
         private static readonly ConcurrentDictionary<string, long> _pending = new();
         private static readonly long debounceTicks = TimeSpan.FromMilliseconds(50).Ticks;
-        void OnFileEvent(string path)
+        static void OnFileEvent(string path)
         {
             long now = Stopwatch.GetTimestamp();
             _pending[path] = now;
@@ -1110,14 +1153,15 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-            if ((config.Enable_CS && filePath.EndsWith("._csdll"))) filePath = filePath[..^3];
-            FileIndex.TryRemove(filePath, out _);
-            RemoveFromFileLead(filePath);
+            if (config.Enable_CS && filePath.EndsWith("._csdll")) filePath = filePath[..^3];
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
                 LiveAssemblies.TryRemove(filePath, out _);
             }
+            FileIndex.TryRemove(filePath, out _);
+            RemoveFromFileLead(filePath);
+            reverseSymlinkMap.TryRemove(filePath, out _);
         }
         /// <summary>Converts ._cs into Assembly</summary>
         public static void CompileAndAddFunction(string filePath)
@@ -1154,12 +1198,10 @@ namespace WebServer
             {
                 ctx?.Unload();
                 LiveAssemblies.TryRemove(toFile, out _);
-                /*
-                FileLead.Remove(toFile, out _); // did not help
+                RemoveFromIndex(file);
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
-                */
             }
             string fullPath = Path.GetFullPath(file);
             HotReloadContext context = new HotReloadContext(fullPath);
