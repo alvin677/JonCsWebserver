@@ -182,18 +182,18 @@ Did `dotnet add reference libs/WebServer.dll` not work?
 ```
 </details>
 
-## PHP backend (Enable_PHP: true)
+## PHP/FastCGI backend
 <details>
 <summary>PHP is a very popular backend language.</summary>  
   
-To support PHP, install php-fpm with `apt install php-fpm` (Manual: https://www.php.net/downloads.php), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance. Set `"Enable_PHP": true` in the `JonCsWebConfig.json` config file.<br/>
+To support PHP, install php-fpm with `apt install php-fpm` (Manual: https://www.php.net/downloads.php), make sure PHP-FPM is up and running, and set IP & Port to your PHP-FPM instance. Add/modify `"ForwardExt": { "php": "fcgi:///run/php/php8.2-fpm.sock" }` in the `JonCsWebConfig.json` config file.<br/>
 1. `nano /etc/php*/*/fpm/pool.d/*.conf`
-2. If possible, use `listen = /run/php/php8.2-fpm.sock` (replace `php8.2-fpm` with your version). If not possible to use Unix socket, set port under `listen =` (so `listen = 9000` for example) (Unix socket ~40 ms lower latency compared to TCP on localhost)
-3. While you are editing that file, we recommend to set `pm.max_children` from `5` -> `28` (the amount of cores you have, preferebly), and `pm.start_servers` from `2` -> `3`. Use your own settings if you know what you are doing.
+2. If possible, use `listen = /run/php/php8.2-fpm.sock` (replace `php8.2-fpm` with your version). If not possible to use Unix socket, set port under `listen =` (so `listen = 9000` for example) (Unix socket has significantly lower latency and improved throughput compared to TCP on localhost)
+3. While you are editing that file, we recommend to set `pm.max_children` to the amount of cores you have. Use your own settings if you know what you are doing.
 4. `systemctl restart php8.2-fpm` (replace `php8.2` with your php-fpm version)
 5. `JonCsWebConfig.json`:
--  set `Enable_PHP` to true,
--  make sure the `PHP_FPM` is set to the correct Unix socket OR ip:port (`/run/php/php8.2-fpm.sock` for Unix socket, or `127.0.0.1:9000` if you set port, for example)
+-  Find `"ForwardExt":`,
+-  add/modify `"php": "fcgi://endpoint"`, where `endpoint` set to the correct Unix socket OR ip:port (`/run/php/php8.2-fpm.sock` for Unix socket, or `127.0.0.1:9000` if you set port in step 2, for example)
 </details>
 
 ## Benchmarks / Speedtests / Stresstests
