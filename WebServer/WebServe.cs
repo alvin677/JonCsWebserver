@@ -1103,11 +1103,16 @@ namespace WebServer
 
             watcher.Created += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
             watcher.Changed += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
-            watcher.Deleted += (sender, e) => RemoveFromIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Deleted += (sender, e) =>
+            {
+                string fullFile = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
+                RemoveFromIndex(fullFile);
+                UpdateIndex(fullFile); // updates directory i.e. with new index.html
+            };
             watcher.Renamed += (sender, e) =>
             {
                 RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
-                OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+                UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/')); // No need to delay on rename
             };
             watcher.Error += (sender, e) => Console.Error.WriteLine("[WARN] FileSystemWatcher buffer overflow: "+e.GetException().Message);
 
@@ -1145,14 +1150,15 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-            if ((config.Enable_CS && filePath.EndsWith("._csdll"))) filePath = filePath[..^3];
-            FileIndex.TryRemove(filePath, out _);
-            RemoveFromFileLead(filePath);
+            if (config.Enable_CS && filePath.EndsWith("._csdll")) filePath = filePath[..^3];
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
             {
                 ctx?.Unload();
                 LiveAssemblies.TryRemove(filePath, out _);
             }
+            FileIndex.TryRemove(filePath, out _);
+            RemoveFromFileLead(filePath);
+            reverseSymlinkMap.TryRemove(filePath, out _);
         }
         /// <summary>Converts ._cs into Assembly</summary>
         public static void CompileAndAddFunction(string filePath)
@@ -1189,12 +1195,10 @@ namespace WebServer
             {
                 ctx?.Unload();
                 LiveAssemblies.TryRemove(toFile, out _);
-                /*
-                FileLead.Remove(toFile, out _); // did not help
+                RemoveFromIndex(file);
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
-                */
             }
             string fullPath = Path.GetFullPath(file);
             HotReloadContext context = new HotReloadContext(fullPath);
