@@ -1093,7 +1093,7 @@ namespace WebServer
 
         static void SetupFileWatcher(string rootDirectory)
         {
-            watcher.Dispose(); // <--
+            watcher.Dispose();
             watcher = new FileSystemWatcher
             {
                 Path = rootDirectory,
