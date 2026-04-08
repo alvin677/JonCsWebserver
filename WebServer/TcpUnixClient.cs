@@ -22,9 +22,9 @@ public class TcpUnixClient : IDisposable
         set => _socket.SendTimeout = value;
     }
 
-    public static async Task<TcpUnixClient> Create()
+    public static async Task<TcpUnixClient> Create(ConnectionInfo connect)
     {
-        return await ConnectAsync(Startup.FastCGI.connect);
+        return await ConnectAsync(connect);
     }
     public TcpUnixClient(Socket socket)
     {

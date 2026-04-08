@@ -162,7 +162,7 @@ public class FastCGIClient
         {
             client?.Close();
             client?.Dispose();
-            client = await TcpUnixClient.Create();
+            client = await TcpUnixClient.Create(connect);
 #if DEBUG
             Console.WriteLine("Connecting new TcpClient.");
 #endif

@@ -76,7 +76,7 @@ namespace WebServer
         private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
         private FileSystemWatcher watcher = new FileSystemWatcher { };
-        public static FastCGIClient FastCGI = new FastCGIClient();
+        // public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount > 12 ? Environment.ProcessorCount / 2 : Environment.ProcessorCount
@@ -394,6 +394,7 @@ namespace WebServer
                     string conn = target["fcgi://".Length..];
                     var fcgiClient = new FastCGIClient(conn);
                     Extensions[ext.Key] = fcgiClient.Run;
+                    Console.WriteLine(ext.Key + " FCGI to "+conn);
                 }
                 else
                 {
