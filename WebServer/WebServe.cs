@@ -394,7 +394,6 @@ namespace WebServer
                     string conn = target["fcgi://".Length..];
                     var fcgiClient = new FastCGIClient(conn);
                     Extensions[ext.Key] = fcgiClient.Run;
-                    Console.WriteLine(ext.Key + " FCGI to "+conn);
                 }
                 else
                 {
