@@ -14,7 +14,6 @@ namespace WebServer
         public bool ServerMetrics { get; set; }
         public bool LoopFindEndpoint { get; set; }
         public bool EnableHtaccess { get; set; }
-        public bool Enable_PHP { get; set; }
         public bool Enable_CS { get; set; }
         public bool Enable_WASM { get; set; }
         public bool AllowSynchronousIO { get; set; }
@@ -40,7 +39,7 @@ namespace WebServer
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
         public uint WebSocketEndpointTimeout { get; set; }
-        public uint PHP_MaxPoolSize { get; set; }
+        public uint FCGI_MaxPoolSize { get; set; }
         public ushort MaxDirDepth { get; set; }
         public ushort[] HttpsPorts { get; set; } = [];
         public ushort[] HttpPorts { get; set; } = [];
@@ -52,7 +51,6 @@ namespace WebServer
         public string Rand_Alphabet { get; set; } = "";
         public string FilterFromDomain { get; set; } = "";
         public string DomainFilterTo { get; set; } = "";
-        public string PHP_FPM { get; set; } = "";
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
@@ -123,7 +121,6 @@ namespace WebServer
             ServerMetrics = false;
             LoopFindEndpoint = false;
             EnableHtaccess = false;
-            Enable_PHP = false;
             Enable_CS = true;
             Enable_WASM = false;
             AllowSynchronousIO = false;
@@ -149,7 +146,7 @@ namespace WebServer
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
             WebSocketEndpointTimeout = 30;
-            PHP_MaxPoolSize = 15;
+            FCGI_MaxPoolSize = 15;
             MaxDirDepth = 15;
             HttpsPorts = [ 443 ];
             HttpPorts = [ 80 ];
@@ -160,7 +157,6 @@ namespace WebServer
             SessionCookieName = "SSID";
             FilterFromDomain = "";
             DomainFilterTo = "";
-            PHP_FPM = "127.0.0.1:9000";
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             indexPriority = ["index._csdll", "index._cs", "index.phpdll", "index.php", "index._wasm", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
@@ -186,7 +182,9 @@ namespace WebServer
             ForwardExt = new Dictionary<string, string>()
             {
                 ["njs"] = "http://{domain}:3000",
-                ["bun"] = "http://{domain}:3000"
+                ["bun"] = "http://{domain}:3000",
+                ["php"] = "fcgi://127.0.0.1:9000",
+                ["php2"] = "fcgi:///run/php/php8.2-fpm.sock"
             };
             ExtTypes["js"] = ["Content-Type: application/javascript"];
             foreach (string g in new string[] { "json", "pdf", "zip", "jar", "dll", "exe" })

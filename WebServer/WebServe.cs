@@ -386,11 +386,26 @@ namespace WebServer
         {
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
-                Extensions[ext.Key] = (context, path) =>
+                string target = ext.Value;
+
+                if (target.StartsWith("fcgi://", StringComparison.OrdinalIgnoreCase))
                 {
-                    string targetUrl = ext.Value.Replace("{domain}", context.Request.Host.Value!.Split(':')[0]) + context.Request.Path.Value + context.Request.QueryString.Value;
-                    return ForwardRequestTo(context, targetUrl);
-                };
+                    // Strip "fcgi://" prefix to get the socket path or host:port
+                    string conn = target["fcgi://".Length..];
+                    var fcgiClient = new FastCGIClient(conn);
+                    Extensions[ext.Key] = fcgiClient.Run;
+                }
+                else
+                {
+                    Extensions[ext.Key] = (context, path) =>
+                    {
+                        string targetUrl = target
+                            .Replace("{domain}", context.Request.Host.Value!.Split(':')[0])
+                            + context.Request.Path.Value
+                            + context.Request.QueryString.Value;
+                        return ForwardRequestTo(context, targetUrl);
+                    };
+                }
             }
             Reload2();
         }
@@ -408,10 +423,10 @@ namespace WebServer
             defaultHeaderCount = defaultHeaderKeys.Length;
 
             foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
-            if (config.Enable_PHP)
+            /*if (config.Enable_PHP)
             {
                 FastCGI = new FastCGIClient(config.PHP_FPM); //.Split(":")[0], int.Parse(Startup.config.PHP_FPM.Split(":")[1]));
-            }
+            }*/
 
             httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
             handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -816,22 +831,6 @@ namespace WebServer
                     return;
                 }
             }
-            if (config.Enable_PHP)
-            {
-                if (Ext == "php")
-                {
-                    try {
-                        AddToFileLead(file, FastCGI.Run);
-                        //if (GenPhpAssembly(file)) LoadPhpAssembly(file); 
-                    } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
-                    return;
-                }
-                else if (Ext == "phpdll")
-                {
-                    try { LoadPhpAssembly(file); } catch (Exception e) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine(file + "\n" + e); Console.ResetColor(); }
-                    return;
-                }
-            }
             if(config.Enable_WASM)
             {
                 if(Ext == "_wasm")
@@ -1119,7 +1118,7 @@ namespace WebServer
 
         static void RemoveFromIndex(string filePath)
         {
-            if ((config.Enable_CS && filePath.EndsWith("._csdll")) || (config.Enable_PHP && filePath.EndsWith(".phpdll"))) filePath = filePath[..^3];
+            if ((config.Enable_CS && filePath.EndsWith("._csdll"))) filePath = filePath[..^3];
             FileIndex.TryRemove(filePath, out _);
             RemoveFromFileLead(filePath);
             if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))

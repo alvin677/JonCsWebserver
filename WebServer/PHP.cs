@@ -291,7 +291,7 @@ public class FastCGIClient
             ArrayPool<byte>.Shared.Return(postBuf);
             ArrayPool<byte>.Shared.Return(recordHeader);
             // Return TcpClient to pool
-            if (_connectionPool.Count < Startup.config.PHP_MaxPoolSize && client.Connected)
+            if (_connectionPool.Count < Startup.config.FCGI_MaxPoolSize && client.Connected)
             {
                 _connectionPool.Enqueue(client);
 #if DEBUG
