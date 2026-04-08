@@ -19,7 +19,7 @@ public class Program
     public static ulong[] requestMetrics = new ulong[3]; // second, minute, hour
     public static string[] wordMetrics = new string[3] { "second", "minute", "hour" };
     // public static string WWWdir = "";
-    // public static string BackendDir = "/var/www";
+    public static string? BackendDir = null;
     // public static string LocalIP = IPFinder.GetLocalIPAddress();
     // public static Config config = new Config();
     public static CancellationTokenSource MetricsCts = new CancellationTokenSource();
@@ -33,7 +33,8 @@ public class Program
         Startup.config.MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: Startup.config.bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(Startup.config.gracePeriod));
         string certPath = args.FirstOrDefault(arg => arg.StartsWith("--certPath"))?.Split("=")[1] ?? Startup.config.CertDir;
         Startup.WWWdir = args.FirstOrDefault(arg => arg.StartsWith("--webPath"))?.Split("=")[1] ?? Startup.config.WWWdir;
-        Startup.BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1] ?? Startup.config.BackendDir;
+        BackendDir = args.FirstOrDefault(arg => arg.StartsWith("--backend"))?.Split("=")[1];
+        Startup.BackendDir = BackendDir ?? Startup.config.BackendDir;
         bool TestSess = args.FirstOrDefault(arg => arg.StartsWith("--testSess")) != null;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
         if(HelpCmd)

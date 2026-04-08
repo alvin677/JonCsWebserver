@@ -75,7 +75,7 @@ namespace WebServer
         private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
-        private FileSystemWatcher watcher = new FileSystemWatcher { };
+        private static FileSystemWatcher watcher = new FileSystemWatcher { };
         // public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
@@ -455,7 +455,42 @@ namespace WebServer
             catch (Exception e) { Console.WriteLine(e.Message); }
             */
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
+            ReloadBackendDir(config.BackendDir);
         }
+        public static void ReloadBackendDir(string newBackendDir)
+        {
+            if (!string.IsNullOrEmpty(newBackendDir) && string.IsNullOrEmpty(Program.BackendDir)) // Only if CLI arg is/was not set
+            {
+                if (!newBackendDir.EndsWith('/'))
+                    newBackendDir += '/'; // avoid per-req addition
+                if (!newBackendDir.Equals(BackendDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[Reload] BackendDir changed: {BackendDir} -> {newBackendDir} | [WARN] Brief downtime while re-indexing files");
+
+                    // 1. Clear existing index
+                    FileLead.Clear();
+                    FileIndex.Clear();
+                    HtaccessMap.Clear();
+                    reverseSymlinkMap.Clear();
+                    foreach(var ent in LiveAssemblies)
+                    {
+                        ent.Value.Unload();
+                    }
+                    LiveAssemblies.Clear();
+
+                    // 2. Update BackendDir reference
+                    BackendDir = newBackendDir;
+
+                    SetupFileWatcher(BackendDir);
+
+                    // 3. Rebuild file index
+                    IndexFiles(BackendDir);
+                    IndexDirectories(BackendDir);
+                    IndexErrorPages(BackendDir);
+                }
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
@@ -1056,7 +1091,7 @@ namespace WebServer
             return hash;
         }
 
-        void SetupFileWatcher(string rootDirectory)
+        static void SetupFileWatcher(string rootDirectory)
         {
             watcher = new FileSystemWatcher
             {
@@ -1081,7 +1116,7 @@ namespace WebServer
 
         private static readonly ConcurrentDictionary<string, long> _pending = new();
         private static readonly long debounceTicks = TimeSpan.FromMilliseconds(50).Ticks;
-        void OnFileEvent(string path)
+        static void OnFileEvent(string path)
         {
             long now = Stopwatch.GetTimestamp();
             _pending[path] = now;
