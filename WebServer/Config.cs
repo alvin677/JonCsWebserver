@@ -36,10 +36,10 @@ namespace WebServer
         public int MaxFilePathLength { get; set; }
         public int FCGI_ReceiveTimeout { get; set; }
         public int FCGI_SendTimeout { get; set; }
+        public uint FCGI_MaxPoolSize { get; set; }
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
         public uint WebSocketEndpointTimeout { get; set; }
-        public uint FCGI_MaxPoolSize { get; set; }
         public ushort MaxDirDepth { get; set; }
         public ushort[] HttpsPorts { get; set; } = [];
         public ushort[] HttpPorts { get; set; } = [];
@@ -143,10 +143,10 @@ namespace WebServer
             MaxFilePathLength = 512;
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;
+            FCGI_MaxPoolSize = 15;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
             WebSocketEndpointTimeout = 30;
-            FCGI_MaxPoolSize = 15;
             MaxDirDepth = 15;
             HttpsPorts = [ 443 ];
             HttpPorts = [ 80 ];
