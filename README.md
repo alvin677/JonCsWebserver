@@ -115,7 +115,7 @@ return new script();
   ```bash
 # Ubuntu/Debian example
 wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-bash dotnet-install.sh --channel 9.0
+bash dotnet-install.sh --channel 10.0
 export PATH=$HOME/.dotnet:$PATH
 ```
 ```bash
@@ -127,7 +127,7 @@ dotnet new classlib -n MyLibrary
 cd MyLibrary
 dotnet add package Microsoft.AspNetCore.Http.Abstractions
 mkdir libs
-wget https://github.com/alvin677/JonCsWebserver/releases/download/1.32/WebServer.dll -O libs/WebServer.dll
+wget https://github.com/alvin677/JonCsWebserver/releases/download/1.64/WebServer.dll -O libs/WebServer.dll
 dotnet add reference libs/WebServer.dll
 nano Class1.cs
 ```
@@ -160,7 +160,7 @@ public class Is_CsScript
 dotnet build -c Release
 ```
 ```bash
-mv bin/Release/net9.0/MyLibrary.dll /var/www/localhost/example/index._csdll
+mv bin/Release/net10.0/MyLibrary.dll /var/www/localhost/example/index._csdll
 ```
 </details>
 <details>
@@ -171,7 +171,7 @@ Did `dotnet add reference libs/WebServer.dll` not work?
 
 ```xml
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.9" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="WebServer">
