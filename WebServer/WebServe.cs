@@ -1072,6 +1072,7 @@ namespace WebServer
             } // Same file re-indexed (e.g. file watcher update) — fall through and overwrite
             FileLead[hash] = new EndpointEntry(handler, fullPath);
         }
+        /// <summary>Trims BackendDir, hashes, and removes from Dict</summary>
         public static void RemoveFromFileLead(string file)
         {
             if (file.Length <= BackendDir.Length) return;
@@ -1100,7 +1101,7 @@ namespace WebServer
             {
                 Path = rootDirectory,
                 IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.DirectoryName
             };
             watcher.Filter = "*";
 
@@ -1114,8 +1115,30 @@ namespace WebServer
             };
             watcher.Renamed += (sender, e) =>
             {
-                RemoveFromIndex(e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/'));
-                UpdateIndex(e.FullPath.Replace(Path.DirectorySeparatorChar, '/')); // No need to delay on rename
+                string oldPath = e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/');
+                string newPath = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
+                bool isDir = (File.GetAttributes(newPath) & FileAttributes.Directory) != 0;
+                if (isDir)
+                {
+                    // Directory renamed — remove all old entries, re-index new path
+                    // Remove all FileLead entries under the old path
+                    foreach (var key in FileLead.Keys.ToArray())
+                    {
+                        if (FileLead.TryGetValue(key, out var entry) && entry.FilePath.StartsWith(oldPath)) // remove all files inside the old path
+                            RemoveFromIndex(entry.FilePath);
+                    }
+                    // Full re-index of renamed directory
+                    Task.Run(() =>
+                    {
+                        IndexFiles(newPath);
+                        IndexDirectories(newPath);
+                    });
+                }
+                else
+                {
+                    RemoveFromIndex(oldPath);
+                    UpdateIndex(newPath); // No need to delay on rename
+                }
             };
             watcher.Error += (sender, e) => Console.Error.WriteLine("[WARN] FileSystemWatcher buffer overflow: "+e.GetException().Message);
 
