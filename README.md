@@ -1,6 +1,6 @@
 # JonCsWebserver
 Performance-focused C# web server, with backend file scripting support and customizable.<br>
-Simply drop-in this webserver in-place of e.g. Apache and get a free performance boost (more than double the performance out-of-the-box)! PHP support, static file support, and more.<br>
+Simply drop-in this webserver in-place of i.e. Apache and get a free performance boost (more than double the performance out-of-the-box)! PHP support, static file support, and more.<br>
 Feel free to fork, modify the code and send push requests to make it more performant! :)
 
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
@@ -10,9 +10,8 @@ The args you don't send through command are loaded from config instead.
 <details>
 <summary>This webserver *should* be excellent for static files.</summary>
   
-If you *only* want to serve static files you can use the config file to set the "WWWdir" to a directory.
-You can also use the `--webPath` startup arg: `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --webPath=/staticfiles`<br/>
-Using our `--backend` works very well for serving static files too.
+The default mode (using `--backend` / BackendDir) works excellently with static files. However, if you *only* want to serve static files, you can use the config file to set the "WWWdir" to a directory.
+Or you can use the `--webPath` startup arg: `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --webPath=/staticfiles`<br/>
 </details>
 
 ## Proxy
