@@ -6,6 +6,191 @@ Feel free to fork, modify the code and send push requests to make it more perfor
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
 `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --backend=/var/www/dynamic_files`<br/>
 The args you don't send through command are loaded from config instead.
+## Configuration
+<details>
+  <summary>JonCsWebConfig.json</summary>
+
+**DO NOT USE!** (this one contains comments explaining what each option does - the out-of-the-box settings should be very similar to below)
+```json
+{
+  "Logging": false,
+  "DebugPages": false, // Show error pages when webserver errors
+  "ServerMetrics": false, // Tracks total requests, and latest rps, rpm, rph
+  "LoopFindEndpoint": false, // If true, it tracks backwards until it finds an index (otherwise err404): /path1/path2/index.html -> /path1/path2 -> /path1 -> /
+  "EnableHtaccess": false, // .htaccess-support
+  "Enable_CS": true, // C#/._csdll-backend support
+  "Enable_WASM": false, // ._wasm-backend support
+  "AllowSynchronousIO": false,
+  "ForceTLS": false, // Force TLS when proxying?
+  "BufferFastCGIResponse": false, // Tweak PHP performance depending on high/low scale
+  "MaxConcurrentConnections": null, // Max global concurrent HTTP(S)-connections
+  "MaxConcurrentUpgradedConnections": 10000, // Max global concurrent WS(S)-connections
+  "MaxRequestBodySize": 8000000000, // Max POST-length
+  "HttpProxyTimeout": 300.0,
+  "bytesPerSecond": 1.0, // Minimum bytes-per-second before WebServer temporarily blocks user. Set it low to avoid false-positives from skimming through videofiles.
+  "gracePeriod": 5,
+  "MaxBytesPerSecond": 0, // Limit outbound bandwidth per-client-IP
+  "RequestTimeout": 0,
+  "KeepAliveTimeout": 130,
+  "RequestHeadersTimeout": 30,
+  "RateLimitTime": 1,
+  "RateLimitReq": 0,
+  "RateLimitRefill": 100,
+  "RateLimitQueue": 0,
+  "MaxFilePathLength": 512,
+  "FCGI_ReceiveTimeout": 300000,
+  "FCGI_SendTimeout": 300000,
+  "FCGI_MaxPoolSize": 20,
+  "ClearSessEveryXMin": 5,
+  "WebSocketTimeout": 300,
+  "WebSocketEndpointTimeout": 30,
+  "MaxDirDepth": 15, // Max amount of slashes in the URL. /path1/path2/path3...
+  "HttpsPorts": [
+    443, 8443
+  ],
+  "HttpPorts": [
+    80, 8080
+  ],
+  "CertDir": "certs/", // certs -> domain1, domain2 -> privkey.pem, fullchain.pem
+  "WWWdir": "", // Static-files exclusive mode
+  "BackendDir": "www", // Hybrid mode (Static files + backend)
+  "SessionsDir": "sess/", // Used in C#-endpoints for saving/loading sessions from.
+  "SessionCookieName": "SSID",
+  "Rand_Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", // Letters used for randomizing i.e. SSID
+  "FilterFromDomain": "", // Optional: "."
+  "DomainFilterTo": "", // If set to "", it will replace all "." with "" 
+  "indexPriority": [ // Every directory tries to "copy" endpoint from the first file found within this list
+    "index._csdll",
+    "index._cs",
+    "index.php",
+    "index._wasm",
+    "index.njs",
+    "index.bun",
+    "index.html"
+  ],
+  "DownloadIfExtension": [ // These file extensions tell client to download (through headers)
+    "zip", "tar", "gz",
+    "jar", "apk",
+    "dll",
+    "exe", "bat", "bash", "sh", "x86_64"
+  ],
+  "CompressionLevel": 0, // "Optimal" / 0, "Fastest" / 1, "NoCompression" / 2, "SmallestSize" / 3
+  "ExtTypes": { // Set headers per-file extension
+    "html": [
+      "Content-Type: text/html",
+      "Cache-Control: max-age=86400"
+    ],
+    "php": [
+      "Content-Type: text/html"
+    ],
+    "txt": [
+      "Content-Type: text/plain"
+    ],
+    "log": [
+      "Content-Type: text/plain"
+    ],
+    "css": [
+      "Content-Type: text/css"
+    ],
+    "jpg": [
+      "Content-Type: image/jpeg"
+    ],
+    "svg": [
+      "Content-Type: image/svg+xml"
+    ],
+    "mp3": [
+      "Content-Type: audio/mpeg"
+    ],
+    "js": [
+      "Content-Type: application/javascript"
+    ],
+    "json": [
+      "Content-Type: application/json"
+    ],
+    "pdf": [
+      "Content-Type: application/pdf"
+    ],
+    "zip": [
+      "Content-Type: application/zip"
+    ],
+    "jar": [
+      "Content-Type: application/jar"
+    ],
+    "dll": [
+      "Content-Type: application/dll"
+    ],
+    "exe": [
+      "Content-Type: application/exe"
+    ],
+    "apk": ["Content-Type: application/vnd.android.package-archive"],
+    "wasm": ["Content-Type: application/wasm"],
+    "png": [
+      "Content-Type: image/png"
+    ],
+    "jpeg": [
+      "Content-Type: image/jpeg"
+    ],
+    "gif": [
+      "Content-Type: image/gif"
+    ],
+    "webp": [
+      "Content-Type: image/webp"
+    ],
+    "ico": [
+      "Content-Type: image/ico"
+    ],
+    "wav": [
+      "Content-Type: audio/wav"
+    ],
+    "ogg": [
+      "Content-Type: audio/ogg"
+    ],
+    "mp4": [
+      "Content-Type: video/mp4"
+    ],
+    "flv": [
+      "Content-Type: video/flv"
+    ],
+    "mkv": [
+      "Content-Type: video/mkv"
+    ],
+    "wmf": [
+      "Content-Type: video/wmf"
+    ],
+    "avi": [
+      "Content-Type: video/avi"
+    ],
+    "webm": [
+      "Content-Type: video/webm"
+    ],
+    "srt": ["Content-Type: text/plain; charset=utf-8"],
+    "vtt": ["Content-Type: text/plain; charset=utf-8"]
+  },
+  "ForwardExt": { // Reverse-proxy and FastCGI-support
+    "njs": "http://{domain}:7001",
+    "bun": "http://{domain}:3000",
+    "php": "fcgi://127.0.0.1:9000"
+  },
+  "DefaultHeaders": { // Default headers for all non-404 requests
+    "Server": "JH",
+    "vary": "Accept-Encoding",
+    "Accept-Ranges": "bytes",
+    "Access-Control-Allow-Origin": "*",
+    "cache-control": "max-age=300"
+  },
+  "DomainAlias": { // Lead www.domain to domain, etc.
+    "www.example.com": "example.com",
+    "127.0.0.1": "localhost",
+    "www.jonhosting.com": "jonhosting.com",
+    "www.jontv.me": "jontv.me"
+  },
+  "UrlAlias": {
+    // "jonhosting.com/testing1234": "/test2_maybe_use_symlink_instead/useDomainAlias_for_changing_domain_virtually"
+  }
+}
+```
+</details>
+
 ## Static files
 <details>
 <summary>This webserver *should* be excellent for static files.</summary>
