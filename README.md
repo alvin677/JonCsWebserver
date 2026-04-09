@@ -10,7 +10,7 @@ The args you don't send through command are loaded from config instead.
 <details>
   <summary>JonCsWebConfig.json</summary>
 
-The json below contains comments about what each option does. The out-of-the-box settings should be very similar.
+The json below contains comments about what each option does. The out-of-the-box settings should be very similar.<br>
 **DO NOT USE! IT WILL BREAK JSON SYNTAX.**
 ```json
 {
