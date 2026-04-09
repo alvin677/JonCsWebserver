@@ -192,6 +192,24 @@ The json below contains comments about what each option does. The out-of-the-box
 ```
 </details>
 
+## CLI
+<details><summary>Command-line interface</summary>
+
+`[]` = optional
+```
+listfiles [path] | Lists full filePaths of every file that has been indexed.
+countfiles [path] | Same as listfiles, but returns a number.
+indexfiles [path] | Manually index from a directory. Can be useful in-case of any FileWatcher bugs.
+clearcerts | Clears cached certificates
+loadcerts | Loads certs (use clearcerts + loadcerts to reload certificates live)
+listcerts | Lists domains that has certificates
+reload | Reload from config file. You may want to use indexfiles after this if you changed ExtTypes or DownloadIfExtension
+stats | Shows memory (RAM) and CPU usage. If ServerMetrics is turned on in config, it tells you total requests, and latest rps, rpm, rph.
+gc | Manually force GC
+shutdown | Shuts down the webserver
+```
+</details>
+
 ## Static files
 <details>
 <summary>This webserver *should* be excellent for static files.</summary>
