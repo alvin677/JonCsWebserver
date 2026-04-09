@@ -33,8 +33,8 @@ The args you don't send through command are loaded from config instead.
   "RequestTimeout": 0,
   "KeepAliveTimeout": 130,
   "RequestHeadersTimeout": 30,
-  "RateLimitTime": 1,
-  "RateLimitReq": 0,
+  "RateLimitTime": 1, // 1 second. CF default: 10
+  "RateLimitReq": 0, // Amount of requests within RateLimitTime before it ratelimits specific IP. Recommended: 500
   "RateLimitRefill": 100,
   "RateLimitQueue": 0,
   "MaxFilePathLength": 512,
