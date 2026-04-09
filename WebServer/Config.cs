@@ -88,7 +88,12 @@ namespace WebServer
                     parsed.Add(header[(sep + 1)..].Trim());
                 }
 
-                OptExtTypes[kvp.Key] = parsed.ToArray();
+                string[] optimized = parsed.ToArray();
+                // Support comma-separated keys e.g. "html,htm,xhtml"
+                foreach (string key in kvp.Key.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    OptExtTypes[key] = optimized; // all share the same array — no duplication
+                }
             }
             UrlAliasHash = BuildUrlAliasHashes(UrlAlias);
         }
