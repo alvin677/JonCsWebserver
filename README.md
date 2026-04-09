@@ -52,7 +52,7 @@ The json below contains comments about what each option does. The out-of-the-box
   "HttpPorts": [ // --httpPort=80,8080
     80, 8080
   ],
-  "CertDir": "certs/", // certs -> domain1, domain2 -> privkey.pem, fullchain.pem // override with --certPath=/var/etc/letsencrypt/live/
+  "CertDir": "certs/", // certs -> domain1, domain2 -> privkey.pem, fullchain.pem // override with --certPath=/etc/letsencrypt/live/
   "WWWdir": "", // Static-files exclusive mode // --webPath=/var/www
   "BackendDir": "www", // Hybrid mode (Static files + backend) // --backend=/var/www
   "SessionsDir": "sess/", // Used in C#-endpoints for saving/loading sessions from.
