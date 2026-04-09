@@ -46,15 +46,15 @@ The json below contains comments about what each option does. The out-of-the-box
   "WebSocketTimeout": 300,
   "WebSocketEndpointTimeout": 30,
   "MaxDirDepth": 15, // Max amount of slashes in the URL. /path1/path2/path3...
-  "HttpsPorts": [
+  "HttpsPorts": [ // --httpsPort=443,8443
     443, 8443
   ],
-  "HttpPorts": [
+  "HttpPorts": [ // --httpPort=80,8080
     80, 8080
   ],
-  "CertDir": "certs/", // certs -> domain1, domain2 -> privkey.pem, fullchain.pem
-  "WWWdir": "", // Static-files exclusive mode
-  "BackendDir": "www", // Hybrid mode (Static files + backend)
+  "CertDir": "certs/", // certs -> domain1, domain2 -> privkey.pem, fullchain.pem // override with --certPath=/var/etc/letsencrypt/live/
+  "WWWdir": "", // Static-files exclusive mode // --webPath=/var/www
+  "BackendDir": "www", // Hybrid mode (Static files + backend) // --backend=/var/www
   "SessionsDir": "sess/", // Used in C#-endpoints for saving/loading sessions from.
   "SessionCookieName": "SSID",
   "Rand_Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", // Letters used for randomizing i.e. SSID
