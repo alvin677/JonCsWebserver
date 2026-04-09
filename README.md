@@ -10,7 +10,8 @@ The args you don't send through command are loaded from config instead.
 <details>
   <summary>JonCsWebConfig.json</summary>
 
-**DO NOT USE!** (this one contains comments explaining what each option does - the out-of-the-box settings should be very similar to below)
+The json below contains comments about what each option does. The out-of-the-box settings should be very similar.
+**DO NOT USE! IT WILL BREAK JSON SYNTAX.**
 ```json
 {
   "Logging": false,
