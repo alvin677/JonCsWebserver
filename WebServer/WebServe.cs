@@ -1095,6 +1095,7 @@ namespace WebServer
                     LiveAssemblies[toFile] = ctx;
                 }
             }
+            reverseSymlinkMap.TryRemove(oldPath, out _);
             if (HtaccessMap.TryRemove(FileKey, out _))
                 IndexDirectory(newPath); // lazy edge-case fix
         }
