@@ -7,7 +7,6 @@ namespace WebServer
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Session
     {
-        static Random random = Random.Shared;
         public static async Task<Dictionary<string, string>?> GetSess(HttpContext context)
         {
             _ = context.Request.Cookies.TryGetValue(Startup.config.SessionCookieName, out string? sessID);
@@ -64,7 +63,7 @@ namespace WebServer
         }
         public static string GenerateRandomId(int length = 8)
         {
-            return new string(Enumerable.Range(0, length).Select(_ => Startup.config.Rand_Alphabet[random.Next(Startup.config.Rand_Alphabet.Length)]).ToArray());
+            return new string(Enumerable.Range(0, length).Select(_ => Startup.config.Rand_Alphabet[Random.Shared.Next(Startup.config.Rand_Alphabet.Length)]).ToArray());
         }
     }
 }
