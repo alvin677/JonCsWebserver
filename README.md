@@ -77,7 +77,7 @@ The json below contains comments about what each option does. The out-of-the-box
   ],
   "CompressionLevel": 0, // "Optimal" / 0, "Fastest" / 1, "NoCompression" / 2, "SmallestSize" / 3
   "ExtTypes": { // Set headers per-file extension
-    "html": [
+    "html,htm,xhtml": [
       "Content-Type: text/html",
       "Cache-Control: max-age=86400"
     ],
