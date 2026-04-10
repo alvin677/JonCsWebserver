@@ -68,14 +68,13 @@ namespace WebServer
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
-
+        /// <summary>Converts ext: ["Header: value", "Header2: value2"] into ext: ["Header","value","Header2","value2"]</summary>
         public void FriendlyHeadersToOptimized()
         {
             foreach (var kvp in ExtTypes)
             {
                 string[] list = kvp.Value;
                 List<string> parsed = new List<string>(list.Length * 2);
-
                 foreach (var header in list)
                 {
                     int sep = header.IndexOf(':');
@@ -87,27 +86,28 @@ namespace WebServer
                     parsed.Add(header[..sep].Trim());
                     parsed.Add(header[(sep + 1)..].Trim());
                 }
-
-                OptExtTypes[kvp.Key] = parsed.ToArray();
+                string[] optimized = parsed.ToArray();
+                // Support comma-separated keys e.g. "html,htm,xhtml"
+                foreach (string key in kvp.Key.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    OptExtTypes[key] = optimized; // all share the same array — no duplication
+                }
             }
             UrlAliasHash = BuildUrlAliasHashes(UrlAlias);
         }
+        /// <summary>Hashing for UrlAlias, allows skipping string concat per-req</summary>
         public static Dictionary<ulong, string> BuildUrlAliasHashes(Dictionary<string, string> urlAlias)
         {
             var result = new Dictionary<ulong, string>(urlAlias.Count);
-
             foreach (var kvp in urlAlias)
             {
                 string key = kvp.Key;
-
                 // Split host + path
                 int slashIndex = key.IndexOf('/');
                 string host = slashIndex == -1 ? key : key[..slashIndex];
                 string path = slashIndex == -1 ? "" : key[slashIndex..]; // keep leading /
-
                 // Compute hash sequentially (host then path)
                 ulong hash = Startup.HashHostAndPath(host.AsSpan(), path.AsSpan());
-
                 // Add to dictionary
                 result[hash] = kvp.Value;
             }
@@ -168,10 +168,10 @@ namespace WebServer
             ];
             ExtTypes = new Dictionary<string, string[]>() // "Content-Type", "text/html" so we don't have to split string or anything during runtime, can just do a for loop using i+=2
             {
-                ["html"] = ["Content-Type: text/html", "Cache-Control: max-age=86400"], 
+                ["html,htm,xhtml"] = ["Content-Type: text/html", "Cache-Control: max-age=86400"], 
                 ["php"] = ["Content-Type: text/html"],
-                ["txt"] = ["Content-Type: text/plain"],
-                ["log"] = ["Content-Type: text/plain"],
+                ["txt,log"] = ["Content-Type: text/plain"],
+                ["srt,vtt"] = ["Content-Type: text/plain; charset=utf-8"],
                 ["css"] = ["Content-Type: text/css"],
                 ["jpg"] = ["Content-Type: image/jpeg"],
                 ["svg"] = ["Content-Type: image/svg+xml"],
