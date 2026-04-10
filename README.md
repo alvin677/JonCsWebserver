@@ -84,17 +84,11 @@ The json below contains comments about what each option does. The out-of-the-box
     "php": [
       "Content-Type: text/html"
     ],
-    "txt": [
-      "Content-Type: text/plain"
-    ],
-    "log": [
+    "txt,log": [
       "Content-Type: text/plain"
     ],
     "css": [
       "Content-Type: text/css"
-    ],
-    "jpg": [
-      "Content-Type: image/jpeg"
     ],
     "svg": [
       "Content-Type: image/svg+xml"
@@ -128,7 +122,7 @@ The json below contains comments about what each option does. The out-of-the-box
     "png": [
       "Content-Type: image/png"
     ],
-    "jpeg": [
+    "jpeg,jpg": [
       "Content-Type: image/jpeg"
     ],
     "gif": [
@@ -164,8 +158,7 @@ The json below contains comments about what each option does. The out-of-the-box
     "webm": [
       "Content-Type: video/webm"
     ],
-    "srt": ["Content-Type: text/plain; charset=utf-8"],
-    "vtt": ["Content-Type: text/plain; charset=utf-8"]
+    "srt,vtt": ["Content-Type: text/plain; charset=utf-8"]
   },
   "ForwardExt": { // Reverse-proxy and FastCGI-support
     "njs": "http://{domain}:7001",
