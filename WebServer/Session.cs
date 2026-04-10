@@ -7,7 +7,7 @@ namespace WebServer
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Session
     {
-        static Random random = new Random();
+        static Random random = Random.Shared;
         public static async Task<Dictionary<string, string>?> GetSess(HttpContext context)
         {
             _ = context.Request.Cookies.TryGetValue(Startup.config.SessionCookieName, out string? sessID);
