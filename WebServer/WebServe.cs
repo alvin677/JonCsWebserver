@@ -1159,7 +1159,7 @@ namespace WebServer
                 catch { isDir = !Path.HasExtension(newPath); } // fallback heuristic
                 if (isDir)
                 {
-                    // Directory renamed. Re-index new path
+                    // Directory renamed. Re-index new path quickly for minimal downtime.
                     foreach (var kvp in FileLead.ToArray())
                     {
                         if (kvp.Value.FilePath.StartsWith(oldPath, StringComparison.OrdinalIgnoreCase))

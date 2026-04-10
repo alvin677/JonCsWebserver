@@ -68,14 +68,13 @@ namespace WebServer
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
-
+        /// <summary>Converts ext: ["Header: value", "Header2: value2"] into ext: ["Header","value","Header2","value2"]</summary>
         public void FriendlyHeadersToOptimized()
         {
             foreach (var kvp in ExtTypes)
             {
                 string[] list = kvp.Value;
                 List<string> parsed = new List<string>(list.Length * 2);
-
                 foreach (var header in list)
                 {
                     int sep = header.IndexOf(':');
@@ -87,9 +86,7 @@ namespace WebServer
                     parsed.Add(header[..sep].Trim());
                     parsed.Add(header[(sep + 1)..].Trim());
                 }
-
                 string[] optimized = parsed.ToArray();
-
                 // Support comma-separated keys e.g. "html,htm,xhtml"
                 foreach (string key in kvp.Key.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
@@ -98,22 +95,19 @@ namespace WebServer
             }
             UrlAliasHash = BuildUrlAliasHashes(UrlAlias);
         }
+        /// <summary>Hashing for UrlAlias, allows skipping string concat per-req</summary>
         public static Dictionary<ulong, string> BuildUrlAliasHashes(Dictionary<string, string> urlAlias)
         {
             var result = new Dictionary<ulong, string>(urlAlias.Count);
-
             foreach (var kvp in urlAlias)
             {
                 string key = kvp.Key;
-
                 // Split host + path
                 int slashIndex = key.IndexOf('/');
                 string host = slashIndex == -1 ? key : key[..slashIndex];
                 string path = slashIndex == -1 ? "" : key[slashIndex..]; // keep leading /
-
                 // Compute hash sequentially (host then path)
                 ulong hash = Startup.HashHostAndPath(host.AsSpan(), path.AsSpan());
-
                 // Add to dictionary
                 result[hash] = kvp.Value;
             }
