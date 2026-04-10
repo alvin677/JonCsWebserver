@@ -1079,6 +1079,25 @@ namespace WebServer
             ulong hash = HashSpan(file.AsSpan(BackendDir.Length));
             FileLead.TryRemove(hash, out _);
         }
+        /// <summary>Moves index from oldPath to newPath in every relevant dictionary</summary>
+        public static void MoveFileDict(ulong FileKey, string oldPath, string newPath)
+        {
+            if (FileLead.TryRemove(FileKey, out var entry))
+                AddToFileLead(newPath, entry.Handler);
+            if (FileIndex.TryRemove(oldPath, out long[]? val))
+                FileIndex[newPath] = val;
+            if (oldPath.EndsWith("._csdll", StringComparison.OrdinalIgnoreCase))
+            {
+                string fromFile = oldPath[..^3];
+                if (LiveAssemblies.TryRemove(fromFile, out HotReloadContext? ctx))
+                {
+                    string toFile = newPath[..^3];
+                    LiveAssemblies[toFile] = ctx;
+                }
+            }
+            if (HtaccessMap.TryRemove(FileKey, out _))
+                IndexDirectory(newPath); // lazy edge-case fix
+        }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashSpan(ReadOnlySpan<char> data)
         {
@@ -1110,22 +1129,42 @@ namespace WebServer
             watcher.Deleted += (sender, e) =>
             {
                 string fullFile = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
-                RemoveFromIndex(fullFile);
-                UpdateIndex(fullFile); // updates directory i.e. with new index.html
+                if (fullFile.Length > BackendDir.Length)
+                {
+                    ulong hash = HashSpan(fullFile.AsSpan(BackendDir.Length));
+                    bool isDir = FileLead.TryGetValue(hash, out var entry)
+                              && !string.Equals(entry.FilePath, fullFile, StringComparison.OrdinalIgnoreCase);
+                    RemoveFromIndex(fullFile); // Remove beforehand. 1 less iteration using StartsWith below
+                    if (isDir)
+                    {
+                        foreach (var kvp in FileLead.ToArray())
+                            if (kvp.Value.FilePath.StartsWith(fullFile, StringComparison.OrdinalIgnoreCase))
+                                RemoveFromIndex(kvp.Value.FilePath);
+                        HtaccessMap.TryRemove(hash, out _);
+                        return; // directory deleted — no parent update needed
+                    }
+                }
+                else
+                {
+                    RemoveFromIndex(fullFile);
+                }
+                UpdateIndex(fullFile); // update parent dir for both cases
             };
             watcher.Renamed += (sender, e) =>
             {
                 string oldPath = e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/');
                 string newPath = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
-                bool isDir = (File.GetAttributes(newPath) & FileAttributes.Directory) != 0;
+                bool isDir = false;
+                try { isDir = (File.GetAttributes(newPath) & FileAttributes.Directory) != 0; }
+                catch { isDir = !Path.HasExtension(newPath); } // fallback heuristic
                 if (isDir)
                 {
-                    // Directory renamed — remove all old entries, re-index new path
-                    // Remove all FileLead entries under the old path
-                    foreach (var key in FileLead.Keys.ToArray())
+                    // Directory renamed. Re-index new path
+                    foreach (var kvp in FileLead.ToArray())
                     {
-                        if (FileLead.TryGetValue(key, out var entry) && entry.FilePath.StartsWith(oldPath)) // remove all files inside the old path
-                            RemoveFromIndex(entry.FilePath);
+                        if (kvp.Value.FilePath.StartsWith(oldPath, StringComparison.OrdinalIgnoreCase))
+                            MoveFileDict(kvp.Key, kvp.Value.FilePath,
+                                newPath + kvp.Value.FilePath[oldPath.Length..]);
                     }
                     // Full re-index of renamed directory
                     Task.Run(() =>
