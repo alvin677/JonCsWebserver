@@ -1177,6 +1177,8 @@ namespace WebServer
                             MoveFileDict(kvp.Key, kvp.Value.FilePath,
                                 newPath + kvp.Value.FilePath[oldPath.Length..]);
                     }
+
+                    IndexDirectory(newPath); // Hotfix. Missed in toMove, likely from missing / at the end.
                     // Full re-index of renamed directory // Just ensures everything is correct, likely not needed
                     Task.Run(() =>
                     {
@@ -1306,7 +1308,7 @@ namespace WebServer
         }
         public static void LoadWasm(string file)
         {
-            var module = Wasm.Load(file);
+            using var module = Wasm.Load(file);
             AddToFileLead(file, async (context, path) =>
             {
                 using var store = new Store(Wasm.WasmEngine);

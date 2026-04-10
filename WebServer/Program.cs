@@ -63,7 +63,7 @@ public class Program
                 {
                     case "help":
                         {
-                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles [/subpath]\nloadcerts\nclearcerts\nlistcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
+                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles [subpath]\nloadcerts\nclearcerts\nlistcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
                             break;
                         }
                     case "listfiles":
@@ -99,7 +99,7 @@ public class Program
                         }
                     case "indexfiles":
                         {
-                            string indx = Startup.BackendDir + String.Join(' ', Args.Skip(1));
+                            string indx = Startup.BackendDir + String.Join(' ', Args.Skip(1)).TrimStart('/'); // BackendDir forceadds a / to the end if not provided
                             _ = Task.Run(()=>
                             {
                                 Startup.IndexFiles(indx);
