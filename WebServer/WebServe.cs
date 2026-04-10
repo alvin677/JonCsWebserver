@@ -1161,13 +1161,23 @@ namespace WebServer
                 if (isDir)
                 {
                     // Directory renamed. Re-index new path quickly for minimal downtime.
-                    foreach (var kvp in FileLead.ToArray())
+                    var toMove = FileLead.ToArray()
+                    .Where(kvp => kvp.Value.FilePath.StartsWith(oldPath, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                    if (toMove.Length > 10_000)
                     {
-                        if (kvp.Value.FilePath.StartsWith(oldPath, StringComparison.OrdinalIgnoreCase))
+                        Parallel.ForEach(toMove, paralleloptions, kvp =>
+                            MoveFileDict(kvp.Key, kvp.Value.FilePath,
+                                newPath + kvp.Value.FilePath[oldPath.Length..]));
+                    }
+                    else
+                    {
+                        foreach (var kvp in toMove)
                             MoveFileDict(kvp.Key, kvp.Value.FilePath,
                                 newPath + kvp.Value.FilePath[oldPath.Length..]);
                     }
-                    // Full re-index of renamed directory
+                    // Full re-index of renamed directory // Just ensures everything is correct, likely not needed
                     Task.Run(() =>
                     {
                         IndexFiles(newPath);
