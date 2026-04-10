@@ -89,8 +89,8 @@ namespace WebServer
         public static int GetDictLenD() => _pending.Count;
 
         static int defaultHeaderCount = 0;
-        static string[] defaultHeaderKeys = new string[0];
-        static string[] defaultHeaderValues = new string[0];
+        static string[] defaultHeaderKeys = Array.Empty<string>();
+        static string[] defaultHeaderValues = Array.Empty<string>();
         public class DeflateCompressionProvider : ICompressionProvider
         {
             public string EncodingName => "deflate";
@@ -189,6 +189,10 @@ namespace WebServer
                     //endpoints.Map("/{**catchAll}", async context =>
                 app.Use(async(context, next) =>
                 {
+#if DEBUG
+                try
+                {
+#endif
                     var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
                     if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
                     {
@@ -370,7 +374,12 @@ namespace WebServer
                     }
                     await context.Response.WriteAsync(error404);
                     await next(context);
-                });
+#if DEBUG
+                    } catch(Exception e){
+                    Console.WriteLine(e);
+                    }
+#endif
+                    });
                 //});
 
                 Reload();
@@ -1229,10 +1238,9 @@ namespace WebServer
         static void RemoveFromIndex(string filePath)
         {
             if (config.Enable_CS && filePath.EndsWith("._csdll")) filePath = filePath[..^3];
-            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
+            if (LiveAssemblies.TryRemove(filePath, out HotReloadContext? ctx))
             {
-                ctx?.Unload();
-                LiveAssemblies.TryRemove(filePath, out _);
+                ctx.Unload();
             }
             FileIndex.TryRemove(filePath, out _);
             RemoveFromFileLead(filePath);
@@ -1269,10 +1277,9 @@ namespace WebServer
         {
             string toFile = file[..^3];
             // Clear old Assembly from mem
-            if (LiveAssemblies.TryGetValue(toFile, out HotReloadContext? ctx))
+            if (LiveAssemblies.TryRemove(toFile, out HotReloadContext? ctx))
             {
-                ctx?.Unload();
-                LiveAssemblies.TryRemove(toFile, out _);
+                ctx.Unload();
                 RemoveFromIndex(file);
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
@@ -1341,10 +1348,9 @@ namespace WebServer
         {
             // string toFile = filePath[..^3];
             // Clear old Assembly from mem
-            if (LiveAssemblies.TryGetValue(filePath, out HotReloadContext? ctx))
+            if (LiveAssemblies.TryRemove(filePath, out HotReloadContext? ctx))
             {
-                ctx?.Unload();
-                LiveAssemblies.TryRemove(filePath, out _);
+                ctx.Unload();
             }
             HotReloadContext context = new HotReloadContext(filePath);
             Assembly assembly = context.LoadFromAssemblyPath(filePath);
