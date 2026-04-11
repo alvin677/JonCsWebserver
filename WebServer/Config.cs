@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Newtonsoft.Json;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace WebServer
 {
@@ -223,23 +224,29 @@ namespace WebServer
 
             // MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
         }
+        private static readonly JsonSerializerOptions JsonOpts = new()
+        {
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true // matches Newtonsoft's default behavior
+        };
+
         public static Config Load(string filePath)
         {
             if (!File.Exists(filePath))
             {
                 Config config = new Config();
                 config.LoadDefaults();
-                File.WriteAllText(filePath, JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented));
+                File.WriteAllText(filePath, JsonSerializer.Serialize(config, JsonOpts));
                 return config;
             }
 
             string json = File.ReadAllText(filePath);
-            return JsonConvert.DeserializeObject<Config>(json);
+            return JsonSerializer.Deserialize<Config>(json, JsonOpts) ?? new Config();
         }
 
         public async void Save(string filePath)
         {
-            string json = JsonConvert.SerializeObject(this, Newtonsoft.Json.Formatting.Indented);
+            string json = JsonSerializer.Serialize(this, JsonOpts);
             await File.WriteAllTextAsync(filePath, json);
         }
     }

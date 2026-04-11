@@ -1,5 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
-using Newtonsoft.Json;
+using System.Text.Json;
 using System.Diagnostics.CodeAnalysis;
 
 namespace WebServer
@@ -7,6 +7,11 @@ namespace WebServer
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Session
     {
+        private static readonly JsonSerializerOptions JsonOpts = new()
+        {
+            WriteIndented = false,
+            PropertyNameCaseInsensitive = true // matches Newtonsoft's default behavior
+        };
         public static async Task<Dictionary<string, string>?> GetSess(HttpContext context)
         {
             _ = context.Request.Cookies.TryGetValue(Startup.config.SessionCookieName, out string? sessID);
@@ -26,7 +31,7 @@ namespace WebServer
             {
                 byte attempt = 0;
                 string nid = GenerateRandomId();
-                while (!Startup.Sessions.ContainsKey(nid) && attempt < 5 && !File.Exists(Path.Combine(Startup.config.SessionsDir, nid)))
+                while ((Startup.Sessions.ContainsKey(nid) || File.Exists(Path.Combine(Startup.config.SessionsDir, nid))) && attempt < 5)
                 {
                     if (nid.Length > 128)
                     {
@@ -48,7 +53,7 @@ namespace WebServer
             try
             {
                 string Sess = await File.ReadAllTextAsync(Path.Combine(Startup.config.SessionsDir, id));
-                gg = JsonConvert.DeserializeObject<Dictionary<string,string>>(Sess);
+                gg = JsonSerializer.Deserialize<Dictionary<string,string>>(Sess, JsonOpts);
                 if (gg != null) Startup.Sessions[id] = gg;
                 return gg;
             }
@@ -59,11 +64,16 @@ namespace WebServer
         }
         public static async Task SaveSess(string id, Dictionary<string,string> data)
         {
-            await File.WriteAllTextAsync(Path.Combine(Startup.config.SessionsDir, id), JsonConvert.SerializeObject(data));
+            await File.WriteAllTextAsync(Path.Combine(Startup.config.SessionsDir, id), JsonSerializer.Serialize(data, JsonOpts));
         }
         public static string GenerateRandomId(int length = 8)
         {
-            return new string(Enumerable.Range(0, length).Select(_ => Startup.config.Rand_Alphabet[Random.Shared.Next(Startup.config.Rand_Alphabet.Length)]).ToArray());
+            var chars = Startup.config.Rand_Alphabet;
+            return string.Create(length, chars, (span, alphabet) =>
+            {
+                for (int i = 0; i < span.Length; i++)
+                    span[i] = alphabet[Random.Shared.Next(alphabet.Length)];
+            });
         }
     }
 }
