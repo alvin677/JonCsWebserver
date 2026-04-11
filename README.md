@@ -294,6 +294,7 @@ public class Is_CsScript
     }
 }
 ```
+</details>
 <details>
   <summary>You can write C# files for backend (._cs) since v1.73</summary>
   
