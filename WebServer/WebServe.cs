@@ -1196,6 +1196,7 @@ namespace WebServer
                 }
                 else
                 {
+                    // MoveFileDict(HashSpan(fullFile.AsSpan(BackendDir.Length), oldPath, newPath)
                     RemoveFromIndex(oldPath);
                     UpdateIndex(newPath); // No need to delay on rename
                 }
