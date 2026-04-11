@@ -228,7 +228,7 @@ Also supports proxying websockets. It automatically replaces http:// with ws:// 
 
 ## C# backend (Enable_CS: true)
 <details>
-<summary>You can write C# files for backend.</summary><br/>
+<summary>You can compile C# files for backend (._csdll) since v0.76</summary><br/>
   
 (**works since version 0.76**) You can use pre-compiled .dll C# library files, rename the extension from `.dll` to `._csdll`:
 <br>Example 1:
@@ -294,16 +294,21 @@ public class Is_CsScript
     }
 }
 ```
-(**broken**) For direct compilation write files ending with `._cs`:
+<details>
+  <summary>You can write C# files for backend (._cs) since v1.73</summary>
+  
+(**Works since version 1.73**) 
+For direct compilation write files ending with `._cs`:
 ```cs
 using Microsoft.AspNetCore.Http;
-public class script {
- public static async System.Threading.Tasks.Task Run(HttpContext context, string path) {
-  context.Response.ContentType = "text/plain";
-  await context.Response.WriteAsync($"Hello there! Path: {path}");
- }
+using System.Threading.Tasks;
+// using WebServer;
+public class Is_CsScript {
+  public static async Task Run(HttpContext context, string path) {
+    context.Response.ContentType = "text/plain";
+    await context.Response.WriteAsync($"Hello there, kiddo! Path: {path}");
+  }
 }
-return new script();
 ```
 </details>
 <details>
