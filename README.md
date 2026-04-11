@@ -338,13 +338,13 @@ public class Is_CsScript
     {
 /*
         _ = context.Request.Cookies.TryGetValue(Program.config.SessionCookieName, out string? sessID);
-        Dictionary<string,string>? session = await WebServer.Session.GetSess(sessID);
+        Dictionary<string, System.Text.Json.JsonElement>? session = await WebServer.Session.GetSess(sessID);
         if (session == null)
         {
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             return;
         }
-        sessID = session["id"];
+        sessID = session["id"].GetString();
         context.Response.Headers.SetCookie = Program.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path=/; SameSite=Lax; Expires=" + DateTime.UtcNow.AddDays(31);
         session["m"] = "mail@jontv.me";
         await WebServer.Session.SaveSess(sessID, session);
