@@ -296,23 +296,6 @@ public class Is_CsScript
 ```
 </details>
 <details>
-  <summary>You can write C# files for backend (._cs) since v1.73</summary>
-  
-(**Works since version 1.73**) 
-For direct compilation write files ending with `._cs`:
-```cs
-using Microsoft.AspNetCore.Http;
-using System.Threading.Tasks;
-// using WebServer;
-public class Is_CsScript {
-  public static async Task Run(HttpContext context, string path) {
-    context.Response.ContentType = "text/plain";
-    await context.Response.WriteAsync($"Hello there, kiddo! Path: {path}");
-  }
-}
-```
-</details>
-<details>
   <summary>Quick C# -> .dll compile</summary>
 
   ```bash
@@ -364,6 +347,23 @@ dotnet build -c Release
 ```
 ```bash
 mv bin/Release/net10.0/MyLibrary.dll /var/www/localhost/example/index._csdll
+```
+</details>
+<details>
+  <summary>You can write C# files for backend (._cs) since v1.73</summary>
+  
+(**Works since version 1.73**) 
+For direct compilation write files ending with `._cs`:
+```cs
+using Microsoft.AspNetCore.Http;
+using System.Threading.Tasks;
+// using WebServer;
+public class Is_CsScript {
+  public static async Task Run(HttpContext context, string path) {
+    context.Response.ContentType = "text/plain";
+    await context.Response.WriteAsync($"Hello there, kiddo! Path: {path}");
+  }
+}
 ```
 </details>
 <details>
