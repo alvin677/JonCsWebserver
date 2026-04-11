@@ -56,16 +56,16 @@ namespace WebServer
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
         [JsonIgnore]
-        public Dictionary<ulong, string> UrlAliasHash { get; private set; } = new Dictionary<ulong, string>();
-        public Dictionary<string, string[]> ExtTypes { get; private set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<ulong, string> UrlAliasHash { get; set; } = new Dictionary<ulong, string>();
+        public Dictionary<string, string[]> ExtTypes { get; set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
         [JsonIgnore]
         public Dictionary<string, string[]> OptExtTypes { get; set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        public Dictionary<string, string> ForwardExt { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, string> DefaultHeaders { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, string> DomainAlias { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, string> UrlAlias { get; private set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> ForwardExt { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> DefaultHeaders { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> DomainAlias { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> UrlAlias { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
