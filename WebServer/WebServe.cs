@@ -1,6 +1,4 @@
-﻿using CSScripting;
-using CSScriptLib;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
@@ -441,31 +439,9 @@ namespace WebServer
             }
             else handler.ServerCertificateCustomValidationCallback = null;
 
-            string customLibPath = Path.Combine(AppContext.BaseDirectory, "deps");
-            CSScript.GlobalSettings.AddSearchDir(customLibPath);
-            /*
-            try
-            {
-                CSScript.RoslynEvaluator.Reset(true);
-                CSScript.EvaluatorConfig.ReferenceDomainAssemblies = false;
-                CSScript.Evaluator.DisableReferencingFromCode = true;
-
-                foreach (string dll in Directory.GetFiles(customLibPath, "*.dll"))
-                {
-                    try
-                    {
-                        CSScript.Evaluator.ReferenceAssembly(dll);
-                        Console.WriteLine(dll + " added to CSScript.Evaluator Assembly-References");
-                    }
-                    catch (Exception e) { Console.WriteLine(dll + " failed: \n" + e.ToString()); }
-                }
-                // CSScript.GlobalSettings.ClearSearchDirs();
-                CSScript.GlobalSettings.AddSearchDir(customLibPath);
-                CSScript.Evaluator.ReferenceAssembly("System");
-            }
-            catch (Exception e) { Console.WriteLine(e.Message); }
-            */
-            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + customLibPath);
+            string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
+            string depsPath = Path.Combine(executableDir, "deps");
+            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + depsPath);
             ReloadBackendDir(config.BackendDir);
         }
         public static void ReloadBackendDir(string newBackendDir)
@@ -684,7 +660,8 @@ namespace WebServer
                     
                     //client.Options.Cookies = new CookieContainer();
                     string Domain = context.Request.Host.Value!.Split(":")[0];
-                    context.Request.Cookies.ForEach((cookie) => {
+                    foreach (var cookie in context.Request.Cookies)
+                    {
                         Cookie cook = new Cookie(cookie.Key, cookie.Value);
                         try
                         {
@@ -692,8 +669,8 @@ namespace WebServer
                             websockethandler.CookieContainer.Add(cook);
                             //client.Options.Cookies.Add(cook);
                         }
-                        catch (Exception){}
-                    });
+                        catch (Exception) { }
+                    }
                     // client.Options.Cookies = CopyCookies;
                     try
                     {
@@ -1250,29 +1227,132 @@ namespace WebServer
         /// <summary>Converts ._cs into Assembly</summary>
         public static void CompileAndAddFunction(string filePath)
         {
-            // Read the code from the file
             string code = File.ReadAllText(filePath);
-            //CSScript.Evaluator.CompileAssemblyFromFile(filePath, filePath + "dll");
-            try
-            {
-                CSScript.Evaluator.ReferenceAssembliesFromCode(code, [Path.Combine(AppContext.BaseDirectory, "deps")]);
-            }
-            catch (Exception) { }
-            dynamic script = CSScript.Evaluator
-                         .Eval(code);
-            
-            var runMethod = script.GetType().GetMethod("Run");
-            if (runMethod != null)
-            {
-                var func = new Func<HttpContext, string, Task>((context, path) =>
-                {
-                    // Invoke the Run method asynchronously
-                    return (Task)runMethod.Invoke(script, new object[] { context, path });
-                });
+            // Compile in-memory using Roslyn directly
+            var syntaxTree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(code);
 
-                if (func != null) AddToFileLead(filePath, func);
+            var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
+                Path.GetFileNameWithoutExtension(filePath),
+                new[] { syntaxTree },
+                _cachedRefs.Value,
+                new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(
+                    Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+            using var ms = new MemoryStream();
+            var result = compilation.Emit(ms);
+            if (!result.Success)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                foreach (var diag in result.Diagnostics.Where(d =>
+                    d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error))
+                    Console.WriteLine(filePath + ": " + diag.GetMessage());
+                Console.ResetColor();
+                return;
             }
+            ms.Seek(0, SeekOrigin.Begin);
+            // Reuse the same HotReloadContext path as LoadCompiledFunc
+            string toFile = filePath; // ._cs stays as-is, no trimming needed
+            if (LiveAssemblies.TryRemove(toFile, out HotReloadContext? ctx))
+            {
+                ctx.Unload();
+            }
+            HotReloadContext context = new HotReloadContext(filePath);
+            Assembly assembly = context.LoadFromStream(ms);
+            Type? type = assembly.GetType("Is_CsScript");
+            if (type == null)
+            {
+                Console.WriteLine("Make sure to use the class Is_CsScript for ._cs! File: " + filePath);
+                context.Unload();
+                return;
+            }
+            MethodInfo? method = type.GetMethod("Run");
+            if (method == null)
+            {
+                Console.WriteLine("Add Run method to " + filePath);
+                context.Unload();
+                return;
+            }
+            var func = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
+                typeof(Func<HttpContext, string, Task>), method);
+            AddToFileLead(filePath, func);
+            LiveAssemblies[toFile] = context;
         }
+        private static Lazy<List<Microsoft.CodeAnalysis.MetadataReference>> _cachedRefs = new(() => BuildMetadataReferences());
+        private static List<Microsoft.CodeAnalysis.MetadataReference> BuildMetadataReferences()
+        {
+            var references = new HashSet<string>();
+
+            string[] refPackRoots = {
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "packs"),
+    "/usr/share/dotnet/packs",
+};
+
+            string[] packNames = {
+    "Microsoft.NETCore.App.Ref",
+    "Microsoft.AspNetCore.App.Ref"
+};
+
+            string[] targetFrameworks = { "net10.0", "net9.0", "net8.0" };
+
+            // Track which packs we've already added to avoid duplicates across roots
+            var addedPacks = new HashSet<string>();
+
+            foreach (string root in refPackRoots)
+            {
+                if (!Directory.Exists(root)) continue;
+                foreach (string packName in packNames)
+                {
+                    if (addedPacks.Contains(packName)) continue; // already found this pack
+
+                    string pack = Path.Combine(root, packName);
+                    if (!Directory.Exists(pack)) continue;
+
+                    // Sort by actual version number, not string
+                    string? latest = Directory.GetDirectories(pack)
+                        .OrderByDescending(d => {
+                            return Version.TryParse(Path.GetFileName(d), out var v) ? v : new Version(0, 0);
+                        })
+                        .FirstOrDefault();
+
+                    if (latest == null) continue;
+                    Console.WriteLine($"Using {packName} {Path.GetFileName(latest)}");
+
+                    foreach (string tfm in targetFrameworks)
+                    {
+                        string refPath = Path.Combine(latest, "ref", tfm);
+                        if (Directory.Exists(refPath))
+                        {
+                            foreach (string dll in Directory.GetFiles(refPath, "*.dll"))
+                                references.Add(dll);
+                            Console.WriteLine($"  Added {Directory.GetFiles(refPath, "*.dll").Length} refs from {tfm}");
+                            addedPacks.Add(packName); // mark as done
+                            break;
+                        }
+                    }
+                }
+            }
+
+            string? ownLoc = typeof(WebServer.Startup).Assembly.Location;
+            if (!string.IsNullOrEmpty(ownLoc)) references.Add(ownLoc);
+
+            // Add custom deps AFTER ref packs to avoid conflicts with system assemblies
+            string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
+            string depsPath = Path.Combine(executableDir, "deps");
+            if (Directory.Exists(depsPath))
+                foreach (string dll in Directory.GetFiles(depsPath, "*.dll"))
+                    references.Add(dll); // HashSet deduplicates automatically
+
+            Console.WriteLine($"Total references: {references.Count}");
+
+            return references
+                .Select(path => {
+                    try { return Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path) as Microsoft.CodeAnalysis.MetadataReference; }
+                    catch { return null; }
+                })
+                .Where(r => r != null)
+                .Select(r => r!)
+                .ToList();
+        }
+
         /// <summary>Loads file as a Csharp Assembly, adds instant call to it inside FileLead-Dictionary.</summary>
         public static void LoadCompiledFunc(string file)
         {

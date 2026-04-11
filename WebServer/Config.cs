@@ -227,7 +227,8 @@ namespace WebServer
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             WriteIndented = true,
-            PropertyNameCaseInsensitive = true // matches Newtonsoft's default behavior
+            PropertyNameCaseInsensitive = true, // matches Newtonsoft's default behavior
+            Converters = { new JsonStringEnumConverter() } // support string *and* num for enums
         };
 
         public static Config Load(string filePath)
