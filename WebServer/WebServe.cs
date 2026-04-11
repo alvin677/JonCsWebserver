@@ -181,12 +181,12 @@ namespace WebServer
             {
                 if (!BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
                     BackendDir += '/'; // avoid per-req addition
-                // ReadOnlyMemory<char> BackendDirMemory = BackendDir.AsMemory();
                 app.UseWebSockets();
                 // app.UseRouting();
                 //app.UseEndpoints(endpoints =>
                 //{
                     //endpoints.Map("/{**catchAll}", async context =>
+                // Manual Middleware should avoid overhead
                 app.Use(async(context, next) =>
                 {
 #if DEBUG
@@ -379,8 +379,7 @@ namespace WebServer
                     Console.WriteLine(e);
                     }
 #endif
-                    });
-                //});
+                });
 
                 Reload();
                 Task.Run(() =>
