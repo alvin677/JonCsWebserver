@@ -407,6 +407,7 @@ namespace WebServer
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
                 string target = ext.Value;
+                Console.WriteLine(ext.Key + " proxy to " + target);
 
                 if (target.StartsWith("fcgi://", StringComparison.OrdinalIgnoreCase))
                 {
