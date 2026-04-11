@@ -48,8 +48,8 @@ public class Program
                 "--httpsPort=443,8443 | Change the port(s) for HTTPS. Comma-seperated. Default value is 443.");
         }
         if (TestSess) {
-            Dictionary<string,string>? data = Session.GetSess(Startup.config.SessionCookieName).Result;
-            if(data != null) _ = Session.SaveSess(data["id"], data);
+            Dictionary<string, System.Text.Json.JsonElement>? data = Session.GetSess(Startup.config.SessionCookieName).Result;
+            if(data != null) _ = Session.SaveSess(data["id"].GetString()!, data);
         }
         LoadCerts(certPath);
         IHost web = CreateHostBuilder(args).Build();

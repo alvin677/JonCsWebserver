@@ -12,20 +12,20 @@ namespace WebServer
             WriteIndented = false,
             PropertyNameCaseInsensitive = true // matches Newtonsoft's default behavior
         };
-        public static async Task<Dictionary<string, string>?> GetSess(HttpContext context)
+        public static async Task<Dictionary<string, JsonElement>?> GetSess(HttpContext context)
         {
             _ = context.Request.Cookies.TryGetValue(Startup.config.SessionCookieName, out string? sessID);
             if (sessID == "") sessID = null;
-            Dictionary<string, string>? session = await GetSess(sessID);
+            Dictionary<string, JsonElement>? session = await GetSess(sessID);
             if (session == null)
             {
                 return session;
             }
-            sessID = session["id"];
+            sessID = session["id"].GetString();
             context.Response.Headers.SetCookie = Startup.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path=/; SameSite=Lax; Expires=" + DateTime.UtcNow.AddDays(30);
             return session;
         }
-        public static async Task<Dictionary<string,string>?> GetSess(string? id)
+        public static async Task<Dictionary<string, JsonElement>?> GetSess(string? id)
         {
             if (id == null)
             {
@@ -42,18 +42,18 @@ namespace WebServer
                 }
                 if (nid != string.Empty)
                 {
-                    Dictionary<string,string> ob = new Dictionary<string, string>();
-                    ob["id"] = nid;
+                    Dictionary<string, JsonElement> ob = new Dictionary<string, JsonElement>();
+                    ob["id"] = JsonSerializer.SerializeToElement(nid);
                     Startup.Sessions[nid] = ob;
                     return ob;
                 }
                 return null;
             }
-            if (Startup.Sessions.TryGetValue(id, out Dictionary<string,string>? gg)) return gg;
+            if (Startup.Sessions.TryGetValue(id, out Dictionary<string, JsonElement>? gg)) return gg;
             try
             {
                 string Sess = await File.ReadAllTextAsync(Path.Combine(Startup.config.SessionsDir, id));
-                gg = JsonSerializer.Deserialize<Dictionary<string,string>>(Sess, JsonOpts);
+                gg = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Sess, JsonOpts);
                 if (gg != null) Startup.Sessions[id] = gg;
                 return gg;
             }
@@ -62,7 +62,7 @@ namespace WebServer
                 return null;
             }
         }
-        public static async Task SaveSess(string id, Dictionary<string,string> data)
+        public static async Task SaveSess(string id, Dictionary<string, JsonElement> data)
         {
             await File.WriteAllTextAsync(Path.Combine(Startup.config.SessionsDir, id), JsonSerializer.Serialize(data, JsonOpts));
         }

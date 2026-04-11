@@ -23,6 +23,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using Wasmtime;
 
@@ -69,7 +70,7 @@ namespace WebServer
 
         public static readonly ConcurrentDictionary<ulong, EndpointEntry> FileLead = new();
         public static readonly Dictionary<string, RequestDelegate> ErrorDict = new Dictionary<string, RequestDelegate>(StringComparer.OrdinalIgnoreCase);
-        public static ConcurrentDictionary<string, Dictionary<string,string>> Sessions = new ConcurrentDictionary<string, Dictionary<string,string>>(StringComparer.OrdinalIgnoreCase);
+        public static ConcurrentDictionary<string, Dictionary<string, JsonElement>> Sessions = new ConcurrentDictionary<string, Dictionary<string, JsonElement>>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Func<HttpContext, string, Task>> Extensions = new Dictionary<string, Func<HttpContext, string, Task>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HashSet<string>> reverseSymlinkMap = new ConcurrentDictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, HotReloadContext> LiveAssemblies = new ConcurrentDictionary<string, HotReloadContext>(StringComparer.OrdinalIgnoreCase);

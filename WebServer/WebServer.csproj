@@ -19,7 +19,7 @@
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Http.Abstractions" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Http.Extensions" />
     <TrimmerRootAssembly Include="System.Text.Json" />
-    <TrimmerRootAssembly Include="Newtonsoft.Json" />
+    <TrimmerRootAssembly Include="System.Text.Json.Serialization" />
     <TrimmerRootAssembly Include="CSScriptLib" />
   </ItemGroup>
 
@@ -36,7 +36,6 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.5" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="System.CodeDom" Version="10.0.5" />
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
     <PackageReference Include="System.Formats.Asn1" Version="10.0.5" />
