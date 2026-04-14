@@ -625,7 +625,7 @@ namespace WebServer
             return true;
         }
         /// <summary>Proxies to a configured backend.</summary>
-        private static async Task ForwardRequestTo(HttpContext context, string targetUrl)
+        public static async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
             {
