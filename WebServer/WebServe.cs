@@ -417,14 +417,27 @@ namespace WebServer
                 }
                 else
                 {
-                    Extensions[ext.Key] = (context, path) =>
+                    if (target.Contains("{domain}"))
                     {
-                        string targetUrl = target
-                            .Replace("{domain}", context.Request.Host.Value!.Split(':')[0])
-                            + context.Request.Path.Value
-                            + context.Request.QueryString.Value;
-                        return ForwardRequestTo(context, targetUrl);
-                    };
+                        Extensions[ext.Key] = (context, path) =>
+                        {
+                            string targetUrl = target
+                                .Replace("{domain}", context.Request.Host.Value!.Split(':')[0])
+                                + context.Request.Path.Value
+                                + context.Request.QueryString.Value;
+                            return ForwardRequestTo(context, targetUrl);
+                        };
+                    }
+                    else
+                    {
+                        Extensions[ext.Key] = (context, path) => // Skip heavy replacement when possible.
+                        {
+                            string targetUrl = target
+                                + context.Request.Path.Value
+                                + context.Request.QueryString.Value;
+                            return ForwardRequestTo(context, targetUrl);
+                        };
+                    }
                 }
             }
             foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
@@ -438,6 +451,8 @@ namespace WebServer
                 handler.CheckCertificateRevocationList = false;
             }
             else handler.ServerCertificateCustomValidationCallback = null;
+
+            WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
 
             string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
             string depsPath = Path.Combine(executableDir, "deps");
@@ -620,11 +635,12 @@ namespace WebServer
             UseCookies = false
         };
         private static readonly HttpClient httpClient = new HttpClient(handler);
+        private static TimeSpan WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout); // Updated in Reload()
         private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
         {
             return true;
         }
-        /// <summary>Proxies to a configured backend.</summary>
+        /// <summary>Proxies to a configured backend. Replaces HTTP with WS and HTTPS with WSS on WebSockets.</summary>
         public static async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
             if (config.MaxRequestBodySize != null && context.Request.ContentLength > config.MaxRequestBodySize)
@@ -646,8 +662,8 @@ namespace WebServer
                         SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
-                    client.Options.KeepAliveInterval = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
-                    websockethandler.ConnectTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
+                    client.Options.KeepAliveInterval = WSTimeout;
+                    websockethandler.ConnectTimeout = WSTimeout;
                     websockethandler.CookieContainer = new CookieContainer();
                     websockethandler.Credentials = client.Options.Credentials;
                     /*
@@ -659,7 +675,7 @@ namespace WebServer
                     client.Options.SetRequestHeader("X-Forwarded-For", context.Connection.RemoteIpAddress?.ToString());
                     
                     //client.Options.Cookies = new CookieContainer();
-                    string Domain = context.Request.Host.Value!.Split(":")[0];
+                    string Domain = context.Request.Host.Host;
                     foreach (var cookie in context.Request.Cookies)
                     {
                         Cookie cook = new Cookie(cookie.Key, cookie.Value);
@@ -674,9 +690,14 @@ namespace WebServer
                     // client.Options.Cookies = CopyCookies;
                     try
                     {
-                        using HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler);
-                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.WebSocketEndpointTimeout));
-                        await client.ConnectAsync(new Uri(targetUrl.Replace("https:", "wss:").Replace("http:", "ws:")), invoker, cts.Token);
+                        using HttpMessageInvoker invoker = new HttpMessageInvoker(websockethandler); // not thread-safe?
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+                        cts.CancelAfter(WSTimeout);
+                        var wsUri = new UriBuilder(targetUrl)
+                        {
+                            Scheme = targetUrl.StartsWith("https://", StringComparison.Ordinal) ? "wss" : "ws"
+                        }.Uri;
+                        await client.ConnectAsync(wsUri, invoker, cts.Token);
                     }
                     catch(Exception){
                         // Console.WriteLine("Error proxying websocket: \n" + e.ToString());
