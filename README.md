@@ -365,6 +365,21 @@ public class Is_CsScript {
   }
 }
 ```
+Manual proxying rather than relying on config (works if `LoopFindEndpoint` is set to `true`):
+```cs
+using Microsoft.AspNetCore.Http;
+using System.Threading.Tasks;
+using WebServer;
+public class Is_CsScript {
+  const string target = "http://localhost:8000";
+  public static Task Run(HttpContext context, string path) { // We can skip 'async' in this specific case, a tiny micro-opt.
+    string targetUrl = target
+      + context.Request.Path.Value
+      + context.Request.QueryString.Value;
+    return Startup.ForwardRequestTo(context, targetUrl); // (Otherwise awaitable. Works similar to CloudFlare, adding the same ip-header.)
+  }
+}
+```
 </details>
 <details>
   <summary>Issues</summary>
