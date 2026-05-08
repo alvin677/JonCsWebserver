@@ -365,7 +365,7 @@ public class Is_CsScript {
   }
 }
 ```
-Manual proxying rather than relying on config (works if `LoopFindEndpoint` is set to `true`):
+Manual proxying rather than relying on config (works if `LoopFindEndpoint` is set to `true`, otherwise you would need to manually place it at every endpoint):
 ```cs
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
