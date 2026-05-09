@@ -75,7 +75,6 @@ namespace WebServer
         private static readonly ConcurrentDictionary<ulong, HtaccessRules> HtaccessMap = new(); // Store per-directory
         private static Timer _cleanupTimer = new Timer(_ => Sessions.Clear(), null, TimeSpan.Zero, TimeSpan.FromMinutes(config.ClearSessEveryXMin));
         private static FileSystemWatcher watcher = new FileSystemWatcher { };
-        // public static FastCGIClient FastCGI = new FastCGIClient();
         public static ParallelOptions paralleloptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount > 12
@@ -90,7 +89,7 @@ namespace WebServer
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = Array.Empty<string>();
         static string[] defaultHeaderValues = Array.Empty<string>();
-        #region RequestHandler
+        #region Kestrel
         public class DeflateCompressionProvider : ICompressionProvider
         {
             public string EncodingName => "deflate";
@@ -137,6 +136,8 @@ namespace WebServer
                     };
                 });
         }
+        #endregion
+        #region RequestHandler
         public void Configure(IApplicationBuilder app)
         {
             if (WWWdir != "")
@@ -182,10 +183,12 @@ namespace WebServer
                 if (!BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
                     BackendDir += '/'; // avoid per-req addition
                 app.UseWebSockets();
-                // app.UseRouting();
-                //app.UseEndpoints(endpoints =>
-                //{
-                    //endpoints.Map("/{**catchAll}", async context =>
+                /*
+                app.UseRouting();
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints.Map("/{**catchAll}", async context =>
+                */
                 // Manual Middleware should avoid overhead
                 app.Use(async(context, next) =>
                 {
@@ -392,107 +395,6 @@ namespace WebServer
             }
         }
         #endregion
-        public static void Reload()
-        {
-            defaultHeaderKeys = new string[config.DefaultHeaders.Count];
-            defaultHeaderValues = new string[config.DefaultHeaders.Count];
-            int idx = 0;
-            foreach (var kv in config.DefaultHeaders)
-            {
-                defaultHeaderKeys[idx] = kv.Key;
-                defaultHeaderValues[idx] = kv.Value;
-                idx++;
-            }
-            defaultHeaderCount = defaultHeaderKeys.Length;
-            Extensions.Clear();
-            foreach (KeyValuePair<string, string> ext in config.ForwardExt)
-            {
-                string target = ext.Value;
-
-                if (target.StartsWith("fcgi://", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Strip "fcgi://" prefix to get the socket path or host:port
-                    string conn = target["fcgi://".Length..];
-                    var fcgiClient = new FastCGIClient(conn);
-                    Extensions[ext.Key] = fcgiClient.Run;
-                }
-                else
-                {
-                    if (target.Contains("{domain}"))
-                    {
-                        Extensions[ext.Key] = (context, path) =>
-                        {
-                            string targetUrl = target
-                                .Replace("{domain}", context.Request.Host.Value!.Split(':')[0])
-                                + context.Request.Path.Value
-                                + context.Request.QueryString.Value;
-                            return ForwardRequestTo(context, targetUrl);
-                        };
-                    }
-                    else
-                    {
-                        Extensions[ext.Key] = (context, path) => // Skip heavy replacement when possible.
-                        {
-                            string targetUrl = target
-                                + context.Request.Path.Value
-                                + context.Request.QueryString.Value;
-                            return ForwardRequestTo(context, targetUrl);
-                        };
-                    }
-                }
-            }
-            foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
-
-            httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
-            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
-            handler.AllowAutoRedirect = false;
-            if (!config.ForceTLS)
-            {
-                handler.ServerCertificateCustomValidationCallback = IgnoreCert;
-                handler.CheckCertificateRevocationList = false;
-            }
-            else handler.ServerCertificateCustomValidationCallback = null;
-
-            WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
-
-            string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
-            string depsPath = Path.Combine(executableDir, "deps");
-            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + depsPath);
-            ReloadBackendDir(config.BackendDir);
-        }
-        public static void ReloadBackendDir(string newBackendDir)
-        {
-            if (!string.IsNullOrEmpty(newBackendDir) && string.IsNullOrEmpty(Program.BackendDir)) // Only if CLI arg is/was not set
-            {
-                if (!newBackendDir.EndsWith('/'))
-                    newBackendDir += '/'; // avoid per-req addition
-                if (!newBackendDir.Equals(BackendDir, StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine($"[Reload] BackendDir changed: {BackendDir} -> {newBackendDir} | [WARN] Brief downtime while re-indexing files");
-
-                    // 1. Clear existing index
-                    FileLead.Clear();
-                    FileIndex.Clear();
-                    HtaccessMap.Clear();
-                    reverseSymlinkMap.Clear();
-                    foreach(var ent in LiveAssemblies)
-                    {
-                        ent.Value.Unload();
-                    }
-                    LiveAssemblies.Clear();
-
-                    // 2. Update BackendDir reference
-                    BackendDir = newBackendDir;
-
-                    SetupFileWatcher(BackendDir);
-
-                    // 3. Rebuild file index
-                    IndexFiles(BackendDir);
-                    IndexDirectories(BackendDir);
-                    IndexErrorPages(BackendDir);
-                }
-            }
-        }
 
         #region RequestHelpers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -864,6 +766,110 @@ namespace WebServer
                 "%{HTTP_USER_AGENT}" => context.Request.Headers.UserAgent.ToString(),
                 _ => testString
             };
+        #endregion
+
+        #region Config
+        public static void Reload()
+        {
+            defaultHeaderKeys = new string[config.DefaultHeaders.Count];
+            defaultHeaderValues = new string[config.DefaultHeaders.Count];
+            int idx = 0;
+            foreach (var kv in config.DefaultHeaders)
+            {
+                defaultHeaderKeys[idx] = kv.Key;
+                defaultHeaderValues[idx] = kv.Value;
+                idx++;
+            }
+            defaultHeaderCount = defaultHeaderKeys.Length;
+            Extensions.Clear();
+            foreach (KeyValuePair<string, string> ext in config.ForwardExt)
+            {
+                string target = ext.Value;
+
+                if (target.StartsWith("fcgi://", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Strip "fcgi://" prefix to get the socket path or host:port
+                    string conn = target["fcgi://".Length..];
+                    var fcgiClient = new FastCGIClient(conn);
+                    Extensions[ext.Key] = fcgiClient.Run;
+                }
+                else
+                {
+                    if (target.Contains("{domain}"))
+                    {
+                        Extensions[ext.Key] = (context, path) =>
+                        {
+                            string targetUrl = target
+                                .Replace("{domain}", context.Request.Host.Value!.Split(':')[0])
+                                + context.Request.Path.Value
+                                + context.Request.QueryString.Value;
+                            return ForwardRequestTo(context, targetUrl);
+                        };
+                    }
+                    else
+                    {
+                        Extensions[ext.Key] = (context, path) => // Skip heavy replacement when possible.
+                        {
+                            string targetUrl = target
+                                + context.Request.Path.Value
+                                + context.Request.QueryString.Value;
+                            return ForwardRequestTo(context, targetUrl);
+                        };
+                    }
+                }
+            }
+            foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
+
+            httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
+            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+            handler.AllowAutoRedirect = false;
+            if (!config.ForceTLS)
+            {
+                handler.ServerCertificateCustomValidationCallback = IgnoreCert;
+                handler.CheckCertificateRevocationList = false;
+            }
+            else handler.ServerCertificateCustomValidationCallback = null;
+
+            WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
+
+            string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
+            string depsPath = Path.Combine(executableDir, "deps");
+            Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + depsPath);
+            ReloadBackendDir(config.BackendDir);
+        }
+        public static void ReloadBackendDir(string newBackendDir)
+        {
+            if (!string.IsNullOrEmpty(newBackendDir) && string.IsNullOrEmpty(Program.BackendDir)) // Only if CLI arg is/was not set
+            {
+                if (!newBackendDir.EndsWith('/'))
+                    newBackendDir += '/'; // avoid per-req addition
+                if (!newBackendDir.Equals(BackendDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[Reload] BackendDir changed: {BackendDir} -> {newBackendDir} | [WARN] Brief downtime while re-indexing files");
+
+                    // 1. Clear existing index
+                    FileLead.Clear();
+                    FileIndex.Clear();
+                    HtaccessMap.Clear();
+                    reverseSymlinkMap.Clear();
+                    foreach (var ent in LiveAssemblies)
+                    {
+                        ent.Value.Unload();
+                    }
+                    LiveAssemblies.Clear();
+
+                    // 2. Update BackendDir reference
+                    BackendDir = newBackendDir;
+
+                    SetupFileWatcher(BackendDir);
+
+                    // 3. Rebuild file index
+                    IndexFiles(BackendDir);
+                    IndexDirectories(BackendDir);
+                    IndexErrorPages(BackendDir);
+                }
+            }
+        }
         #endregion
 
         #region FileHandler
