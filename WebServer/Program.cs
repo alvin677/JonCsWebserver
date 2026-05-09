@@ -261,6 +261,7 @@ public class Program
             Console.WriteLine(requestMetrics[i] + " req/" + wordMetrics[i]);
         }
     }
+
     public static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
             .ConfigureWebHostDefaults(webBuilder =>
@@ -372,6 +373,8 @@ public class Program
                 });
                 webBuilder.UseStartup<Startup>();
             });
+
+    #region Certificates
     public static void LoadCerts(string certPath)
     {
         Console.ForegroundColor = ConsoleColor.DarkYellow;
@@ -439,4 +442,5 @@ public class Program
 
         return domains;
     }
+    #endregion
 }
