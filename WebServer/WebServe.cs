@@ -90,6 +90,7 @@ namespace WebServer
         static int defaultHeaderCount = 0;
         static string[] defaultHeaderKeys = Array.Empty<string>();
         static string[] defaultHeaderValues = Array.Empty<string>();
+        #region RequestHandler
         public class DeflateCompressionProvider : ICompressionProvider
         {
             public string EncodingName => "deflate";
@@ -390,7 +391,7 @@ namespace WebServer
                 SetupFileWatcher(BackendDir);
             }
         }
-
+        #endregion
         public static void Reload()
         {
             defaultHeaderKeys = new string[config.DefaultHeaders.Count];
@@ -493,6 +494,7 @@ namespace WebServer
             }
         }
 
+        #region RequestHelpers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ReadOnlySpan<char> StripPort(ReadOnlySpan<char> host)
         {
@@ -624,7 +626,7 @@ namespace WebServer
             await context.Response.SendFileAsync(file);
         }
         /// <summary>Adds header to tell Client to download, then calls DefHandle.</summary>
-        private static async Task DefDownload(HttpContext context, string file)
+        public static async Task DefDownload(HttpContext context, string file)
         {
             int slash = file.LastIndexOf('/');
             string fn = slash >= 0 ? file[(slash + 1)..] : "undefined";
@@ -788,11 +790,15 @@ namespace WebServer
                 context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
                 Console.Error.WriteLine(e.Message);
+#if DEBUG
+                Console.Error.WriteLine(e.InnerException);
+                Console.Error.WriteLine(e.StackTrace);
+#endif
                 return;
             }
         }
         /// <summary>user (client), proxyClient (endpoint)</summary>
-        private static async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
+        public static async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
             // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>
@@ -840,6 +846,41 @@ namespace WebServer
             // clientWebSocket.Dispose();
         }
 
+        private static string ResolveTestString(string testString, HttpContext context) =>
+            testString.ToUpperInvariant() switch
+            {
+                "%{REQUEST_FILENAME}" => Path.Combine(BackendDir,
+                                             context.Request.Host.Value?.Split(':')[0] ?? "",
+                                             context.Request.Path.Value?.TrimStart('/') ?? ""),
+                "%{REQUEST_URI}" => context.Request.Path.Value + context.Request.QueryString,
+                "%{QUERY_STRING}" => context.Request.QueryString.Value ?? "",
+                "%{HTTP_HOST}" => context.Request.Host.Value ?? "",
+                "%{REMOTE_ADDR}" => context.Connection.RemoteIpAddress?.ToString() ?? "",
+                "%{REQUEST_METHOD}" => context.Request.Method,
+                "%{HTTPS}" => context.Request.IsHttps ? "on" : "off",
+                "%{SERVER_NAME}" => context.Request.Host.Host,
+                "%{SERVER_PORT}" => context.Request.Host.Port?.ToString() ?? (context.Request.IsHttps ? "443" : "80"),
+                "%{HTTP_REFERER}" => context.Request.Headers.Referer.ToString(),
+                "%{HTTP_USER_AGENT}" => context.Request.Headers.UserAgent.ToString(),
+                _ => testString
+            };
+        #endregion
+
+        #region FileHandler
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong HashSpan(ReadOnlySpan<char> data)
+        {
+            ulong hash = 14695981039346656037UL;
+            for (int i = 0; i < data.Length; i++)
+            {
+                char c = data[i];
+                // Branch-free ASCII lowercase — valid for ASCII paths only
+                // Non-ASCII domain names would need UTF-8 encoding first
+                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                hash = (hash ^ c) * 1099511628211UL;
+            }
+            return hash;
+        }
         public static void IndexFiles(string rootDirectory)
         {
             var files = Directory.EnumerateFiles(rootDirectory, "*.*", SearchOption.AllDirectories);
@@ -900,7 +941,8 @@ namespace WebServer
                 RemoveFromFileLead(file); // no func = error 404
             } // non-existing files throw err
         }
-        static FileInfo ThruSymlinks(string file)
+        /// <summary>Find the real File whether file is a Symlink or not.</summary>
+        public static FileInfo ThruSymlinks(string file)
         {
             HashSet<string> Symlinks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             FileInfo fileInfo = new FileInfo(file);
@@ -983,24 +1025,6 @@ namespace WebServer
                     HtaccessMap.TryRemove(folderHash, out _);
             }
         }
-        private static string ResolveTestString(string testString, HttpContext context) =>
-            testString.ToUpperInvariant() switch
-            {
-                "%{REQUEST_FILENAME}" => Path.Combine(BackendDir,
-                                             context.Request.Host.Value?.Split(':')[0] ?? "",
-                                             context.Request.Path.Value?.TrimStart('/') ?? ""),
-                "%{REQUEST_URI}" => context.Request.Path.Value + context.Request.QueryString,
-                "%{QUERY_STRING}" => context.Request.QueryString.Value ?? "",
-                "%{HTTP_HOST}" => context.Request.Host.Value ?? "",
-                "%{REMOTE_ADDR}" => context.Connection.RemoteIpAddress?.ToString() ?? "",
-                "%{REQUEST_METHOD}" => context.Request.Method,
-                "%{HTTPS}" => context.Request.IsHttps ? "on" : "off",
-                "%{SERVER_NAME}" => context.Request.Host.Host,
-                "%{SERVER_PORT}" => context.Request.Host.Port?.ToString() ?? (context.Request.IsHttps ? "443" : "80"),
-                "%{HTTP_REFERER}" => context.Request.Headers.Referer.ToString(),
-                "%{HTTP_USER_AGENT}" => context.Request.Headers.UserAgent.ToString(),
-                _ => testString
-            };
         public static void IndexErrorPages(string rootDirectory)
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
@@ -1105,20 +1129,6 @@ namespace WebServer
             reverseSymlinkMap.TryRemove(oldPath, out _);
             if (HtaccessMap.TryRemove(FileKey, out _))
                 IndexDirectory(newPath); // lazy edge-case fix
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong HashSpan(ReadOnlySpan<char> data)
-        {
-            ulong hash = 14695981039346656037UL;
-            for (int i = 0; i < data.Length; i++)
-            {
-                char c = data[i];
-                // Branch-free ASCII lowercase — valid for ASCII paths only
-                // Non-ASCII domain names would need UTF-8 encoding first
-                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
-            }
-            return hash;
         }
 
         static void SetupFileWatcher(string rootDirectory)
@@ -1512,5 +1522,6 @@ namespace WebServer
                 return false;
             }
         }
+        #endregion
     }
 }
