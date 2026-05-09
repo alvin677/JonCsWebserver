@@ -24,18 +24,10 @@ public class FastCGIClient
 {
     private ushort requestId = 0;
     private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
-    //private readonly int _port;
-    //private readonly string _host;
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
     private static readonly string LocalIP = IPFinder.GetLocalIPAddress();
     // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
-    /*public FastCGIClient(string host = "127.0.0.1", int port = 9000)
-    {
-        connect = ParseEndpoint(host + ":" + port.ToString());
-        _host = host;
-        _port = port;
-    }*/
     public FastCGIClient(string conn = "127.0.0.1:9000")
     {
         connect = ParseEndpoint(conn);
