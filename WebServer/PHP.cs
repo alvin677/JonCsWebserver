@@ -198,7 +198,7 @@ public class FastCGIClient
                 context.Request.Method != HttpMethods.Options)
             {
                 int bytesRead;
-                while ((bytesRead = await context.Request.Body.ReadAsync(postBuf)) > 0)
+                while ((bytesRead = await context.Request.Body.ReadAsync(postBuf, context.RequestAborted)) > 0)
                     await SendRecord(stream, FastCGIConstants.STDIN, requestId, postBuf.AsMemory(0, bytesRead));
                 await stream.FlushAsync();
             }
