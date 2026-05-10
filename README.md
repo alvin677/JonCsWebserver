@@ -513,23 +513,23 @@ Transfer/sec:     79.13MB
 ```
 HTTP Serving 11.5KB html file
 ```bash
-  14 threads and 1000 connections
+  13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     5.16ms    4.21ms  81.64ms   80.31%
-    Req/Sec    14.90k     1.43k   43.24k    82.12%
-  3116959 requests in 15.10s, 34.95GB read
-Requests/sec: 206433.14
-Transfer/sec:      2.31GB
+    Latency     4.27ms    3.17ms  62.28ms   80.17%
+    Req/Sec    19.07k     2.10k   44.66k    77.63%
+  3692692 requests in 15.10s, 42.13GB read
+Requests/sec: 244550.53
+Transfer/sec:      2.79GB
 ```
 HTTPS Serving 11.5KB html file
 ```bash
-  12 threads and 1000 connections
+  13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    14.77ms   55.77ms 969.29ms   98.24%
-    Req/Sec    10.70k     2.10k   21.32k    88.11%
-  3784179 requests in 30.10s, 42.00GB read
-Requests/sec: 125716.92
-Transfer/sec:      1.40GB
+    Latency    11.74ms   39.53ms 634.41ms   97.48%
+    Req/Sec    13.07k     2.63k   18.25k    92.04%
+  2471917 requests in 15.09s, 28.21GB read
+Requests/sec: 163807.69
+Transfer/sec:      1.87GB
 ```
 HTTP Serving PHP
 ```bash
