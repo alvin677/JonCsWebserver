@@ -1161,9 +1161,9 @@ namespace WebServer
                     RemoveFromIndex(fullFile); // Remove beforehand. 1 less iteration using StartsWith below
                     if (isDir)
                     {
-                        foreach (var kvp in FileLead.ToArray())
-                            if (kvp.Value.FilePath.StartsWith(fullFile, StringComparison.OrdinalIgnoreCase))
-                                RemoveFromIndex(kvp.Value.FilePath);
+                        foreach (var kvp in FileLead.Values.ToArray())
+                            if (kvp.FilePath.StartsWith(fullFile, StringComparison.OrdinalIgnoreCase))
+                                RemoveFromIndex(kvp.FilePath);
                         HtaccessMap.TryRemove(hash, out _);
                         return; // directory deleted — no parent update needed
                     }
