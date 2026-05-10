@@ -1393,7 +1393,7 @@ namespace WebServer
         /// <summary>Loads file as a Csharp Assembly, adds instant call to it inside FileLead-Dictionary.</summary>
         public static void LoadCompiledFunc(string file)
         {
-            string toFile = file[..^3];
+            string toFile = file[..^3]; // ._csdll -> ._cs
             // Clear old Assembly from mem
             if (LiveAssemblies.TryRemove(toFile, out HotReloadContext? ctx))
             {
@@ -1409,6 +1409,7 @@ namespace WebServer
             {
                 context.LoadFromAssemblyPath(Path.GetFullPath(dll));
             }*/
+            // Assembly assembly = context.LoadFromStream(File.OpenRead(fullPath)); // <- might let us avoid the issues from loading the same asm.
             Assembly assembly = context.LoadFromAssemblyPath(fullPath);
             Type? type = assembly.GetType("Is_CsScript");
             if (type == null)
