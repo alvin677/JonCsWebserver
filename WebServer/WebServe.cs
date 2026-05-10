@@ -524,12 +524,7 @@ namespace WebServer
                 }
                 context.Response.ContentLength = LastMod[1];
                 if (context.Request.Method == HttpMethods.Head) return;
-                bool isHttp11 = context.Request.Protocol == HttpProtocol.Http11;
-
-                if (isHttp11)
-                    await context.Response.SendFileAsync(file); // sendfile(2) kernel path
-                else
-                    await StreamFileUsingBodyWriter(context, file, 0, LastMod[1]); // PipeWriter, no alloc
+                await StreamFileUsingBodyWriter(context, file, 0, LastMod[1]); // sendfile(2) is only accessible in HTTP/1.1 with no compression. Considering HTTP/2 pretty much being the standard, this might be the best possible compromise in our case.
                 return;
             }
             if (context.Request.Method == HttpMethods.Head) return;
