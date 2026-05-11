@@ -706,7 +706,6 @@ namespace WebServer
                 context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
                 Console.Error.WriteLine(e.Message);
-                Console.WriteLine(e);
 #if DEBUG
                 Console.WriteLine(e);
 #endif
