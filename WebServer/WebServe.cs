@@ -548,6 +548,8 @@ namespace WebServer
         {
             return true;
         }
+        static readonly HashSet<string> SkipHeaders = new(StringComparer.OrdinalIgnoreCase)
+        {"Connection","Keep-Alive","Proxy-Authenticate","Proxy-Authorization","TE","Trailer","Transfer-Encoding","Upgrade","Host"};
         /// <summary>Proxies to a configured backend. Replaces HTTP with WS and HTTPS with WSS on WebSockets.</summary>
         public static async Task ForwardRequestTo(HttpContext context, string targetUrl)
         {
@@ -630,7 +632,7 @@ namespace WebServer
                 {
                     // context.Request.EnableBuffering();
                     // context.Request.Body.Position = 0;
-                    requestMessage.Headers.TransferEncodingChunked = true;
+                    // requestMessage.Headers.TransferEncodingChunked = true;
                     requestMessage.Content = new StreamContent(context.Request.Body);
                     if (context.Request.ContentType != null)
                     {
@@ -650,16 +652,24 @@ namespace WebServer
 
                 foreach (var header in context.Request.Headers)
                 {
-                    requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+                    if (SkipHeaders.Contains(header.Key))
+                        continue;
+                    var values = header.Value.ToArray();
+                    if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, values))
+                    {
+                        requestMessage.Content?.Headers.TryAddWithoutValidation(header.Key, values);
+                    }
                 }
                 if (!requestMessage.Headers.Contains("cookie")) // patch edge-case from reusing Httpclient
                 {
                     requestMessage.Headers.TryAddWithoutValidation("cookie", "");
                 }
+                /*
                 requestMessage.Headers.TryAddWithoutValidation(":authority", requestMessage.RequestUri.Host.Split(":")[0]);
                 requestMessage.Headers.TryAddWithoutValidation(":path", context.Request.Path + context.Request.QueryString);
                 requestMessage.Headers.TryAddWithoutValidation(":method", context.Request.Method);
                 requestMessage.Headers.TryAddWithoutValidation(":scheme", context.Request.Scheme);
+                */
                 string? UserIp = context.Connection.RemoteIpAddress?.ToString();
                 if (context.Request.Headers.TryGetValue("X-Forwarded-For", out StringValues val))
                 {
@@ -671,7 +681,7 @@ namespace WebServer
                 }
                 requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", UserIp);
 
-                using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead))
+                using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead)) // Opt. , context.RequestAborted
                 {
                     context.Response.StatusCode = (int)responseMessage.StatusCode;
                     foreach (var header in responseMessage.Headers)
@@ -696,9 +706,9 @@ namespace WebServer
                 context.Response.Headers.Remove("Cache-Control");
                 await context.Response.WriteAsync("Sorry. An error occurred.");
                 Console.Error.WriteLine(e.Message);
+                Console.WriteLine(e);
 #if DEBUG
-                Console.Error.WriteLine(e.InnerException);
-                Console.Error.WriteLine(e.StackTrace);
+                Console.WriteLine(e);
 #endif
                 return;
             }
