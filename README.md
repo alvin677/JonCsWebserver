@@ -481,6 +481,23 @@ Serving 11.5KB html file (Kestrel's SendFileAsync):
 
 running (0m30.0s), 0000/2800 VUs, 2273265 complete and 0 interrupted iterations
 ```
+Serving 11.5KB html file (after new update, using our custom function):
+```bash
+    HTTP
+    http_req_duration..............: avg=6.26ms  min=102.88µs med=2.78ms  max=212.74ms p(90)=16.98ms p(95)=23.04ms
+      { expected_response:true }...: avg=6.26ms  min=102.88µs med=2.78ms  max=212.74ms p(90)=16.98ms p(95)=23.04ms
+    http_req_failed................: 0.00%   0 out of 2495642
+    http_reqs......................: 2495642 83127.390574/s
+    EXECUTION
+    iteration_duration.............: avg=30.03ms min=20.16ms  med=25.35ms max=1.41s    p(90)=44.75ms p(95)=53.44ms
+    iterations.....................: 2495642 83127.390574/s
+    vus............................: 2800    min=2800         max=2800
+    vus_max........................: 2800    min=2800         max=2800
+    NETWORK
+    data_received..................: 31 GB   1.0 GB/s
+    data_sent......................: 185 MB  6.2 MB/s
+running (0m30.0s), 0000/2800 VUs, 2495642 complete and 0 interrupted iterations
+```
   ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	| Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `wrk`
   Roughly 2000% CPU utilization (2x CPUs = 28 cores) (~500% wrk usage)
   
