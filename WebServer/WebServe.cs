@@ -460,7 +460,7 @@ namespace WebServer
             while (remaining > 0)
             {
                 int toRead = remaining > bufferSize ? bufferSize : (int)remaining;
-                var memory = bodyWriter.GetMemory(toRead).Slice(0, toRead);
+                var memory = bodyWriter.GetMemory(toRead).Slice(0, toRead); // GetMemory reads at least toRead, then we slice off potential additional data.
                 int bytesRead = await RandomAccess.ReadAsync(handle, memory, offset);
                 if (bytesRead == 0) break; // End of file
 
@@ -683,7 +683,7 @@ namespace WebServer
                 }
                 requestMessage.Headers.TryAddWithoutValidation("CF-Connecting-IP", UserIp);
 
-                using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead)) // Opt. , context.RequestAborted
+                using (HttpResponseMessage responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted)) // Opt. 
                 {
                     context.Response.StatusCode = (int)responseMessage.StatusCode;
                     foreach (var header in responseMessage.Headers)
@@ -702,6 +702,10 @@ namespace WebServer
                         // await responseStream.CopyToAsync(context.Response.Body); // <-- old
                     }
                 }
+                return;
+            }
+            catch (OperationCanceledException)
+            {
                 return;
             }
             catch (Exception e)
@@ -777,7 +781,7 @@ namespace WebServer
 
             while (true)
             {
-                Memory<byte> mem = writer.GetMemory(BufferSize);
+                Memory<byte> mem = writer.GetMemory(BufferSize); // BufferSize is minimum hint
 
                 ValueTask<int> readTask = source.ReadAsync(mem, abort);
 
