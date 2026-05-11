@@ -30,6 +30,7 @@ namespace WebServer
         public long RequestHeadersTimeout { get; set; }
         public double HttpProxyTimeout { get; set; }
         public double bytesPerSecond { get; set; }
+        public double FCGI_QueueTimeout { get; set; }
         public int gracePeriod { get; set; }
         public int RateLimitReq { get; set; }
         public int RateLimitRefill { get; set; }
@@ -37,6 +38,7 @@ namespace WebServer
         public int MaxFilePathLength { get; set; }
         public int FCGI_ReceiveTimeout { get; set; }
         public int FCGI_SendTimeout { get; set; }
+        public int FCGI_MaxConcurrentConnections { get; set; }
         public uint FCGI_MaxPoolSize { get; set; }
         public uint ClearSessEveryXMin { get; set; }
         public uint WebSocketTimeout { get; set; }
@@ -69,6 +71,7 @@ namespace WebServer
 
         [JsonIgnore]
         public MinDataRate? MinRequestBodyDataRate { get; set; }
+
         /// <summary>Converts ext: ["Header: value", "Header2: value2"] into ext: ["Header","value","Header2","value2"]</summary>
         public void FriendlyHeadersToOptimized()
         {
@@ -144,6 +147,8 @@ namespace WebServer
             MaxFilePathLength = 512;
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;
+            FCGI_QueueTimeout = 10;
+            FCGI_MaxConcurrentConnections = 30;
             FCGI_MaxPoolSize = 15;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;

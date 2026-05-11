@@ -26,6 +26,7 @@ public class FastCGIClient
     private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
+    static readonly SemaphoreSlim _fcgiSem = new SemaphoreSlim(Startup.config.FCGI_MaxConcurrentConnections, Startup.config.FCGI_MaxConcurrentConnections);
     private static readonly string LocalIP = IPFinder.GetLocalIPAddress();
     // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
     public FastCGIClient(string conn = "127.0.0.1:9000")
@@ -149,6 +150,12 @@ public class FastCGIClient
     };
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
     {
+        if (!await _fcgiSem.WaitAsync(TimeSpan.FromSeconds(Startup.config.FCGI_QueueTimeout), context.RequestAborted))
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsync("Server busy: Too many concurrent PHP requests");
+            return;
+        }
         // Try to get an existing connection from the pool
         if (!_connectionPool.TryDequeue(out TcpUnixClient? client) || !client.Connected)
         {
@@ -298,6 +305,7 @@ public class FastCGIClient
                 Console.WriteLine("TcpClient was closed..");
 #endif
             }
+            _fcgiSem.Release();
         }
     }
     /// <summary>Extracted to keep the hot loop clean — parses PHP-FPM response headers directly from span</summary>
