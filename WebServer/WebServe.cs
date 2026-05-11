@@ -461,7 +461,7 @@ namespace WebServer
             {
                 int toRead = remaining > bufferSize ? bufferSize : (int)remaining;
                 var memory = bodyWriter.GetMemory(toRead).Slice(0, toRead); // GetMemory reads at least toRead, then we slice off potential additional data.
-                int bytesRead = await RandomAccess.ReadAsync(handle, memory, offset);
+                int bytesRead = await RandomAccess.ReadAsync(handle, memory, offset); // Slice memory above to ensure its the exact amount of data as ContentLength says.
                 if (bytesRead == 0) break; // End of file
 
                 bodyWriter.Advance(bytesRead);
