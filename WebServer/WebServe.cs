@@ -543,6 +543,7 @@ namespace WebServer
         };
         private static readonly HttpClient httpClient = new HttpClient(handler);
         private static TimeSpan WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout); // Updated in Reload()
+        public static TimeSpan FCGI_QueueTimeout;
         private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
         {
             return true;
@@ -834,6 +835,7 @@ namespace WebServer
             else handler.ServerCertificateCustomValidationCallback = null;
 
             WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
+            FCGI_QueueTimeout = TimeSpan.FromSeconds(config.FCGI_QueueTimeout);
 
             string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
             string depsPath = Path.Combine(executableDir, "deps");

@@ -150,7 +150,7 @@ public class FastCGIClient
     };
     public async Task ExecutePhpScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
     {
-        if (!await _fcgiSem.WaitAsync(TimeSpan.FromSeconds(Startup.config.FCGI_QueueTimeout), context.RequestAborted))
+        if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsync("Server busy: Too many concurrent PHP requests");

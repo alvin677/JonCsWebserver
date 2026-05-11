@@ -148,7 +148,7 @@ namespace WebServer
             FCGI_ReceiveTimeout = 300000;
             FCGI_SendTimeout = 300000;
             FCGI_QueueTimeout = 10;
-            FCGI_MaxConcurrentConnections = 30;
+            FCGI_MaxConcurrentConnections = 5000;
             FCGI_MaxPoolSize = 15;
             ClearSessEveryXMin = 5;
             WebSocketTimeout = 300;
