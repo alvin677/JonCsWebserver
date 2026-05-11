@@ -133,7 +133,7 @@ public class FastCGIClient
             Console.WriteLine("env " + item.Key + " = " + item.Value);
         }
 #endif
-        await ExecutePhpScriptAsyncStream(context, GetRequestId(), env);
+        await ExecuteFcgiScriptAsyncStream(context, GetRequestId(), env);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -148,12 +148,12 @@ public class FastCGIClient
     0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN,
     0x00, 0x00, 0x00, 0x00, 0x00
     };
-    public async Task ExecutePhpScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
+    public async Task ExecuteFcgiScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
     {
         if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsync("Server busy: Too many concurrent PHP requests");
+            await context.Response.WriteAsync("Server busy: Too many concurrent requests");
             return;
         }
         // Try to get an existing connection from the pool
