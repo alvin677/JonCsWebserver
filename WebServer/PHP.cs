@@ -26,7 +26,7 @@ public class FastCGIClient
     private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
-    static readonly SemaphoreSlim _fcgiSem = new SemaphoreSlim(Startup.config.FCGI_MaxConcurrentConnections, Startup.config.FCGI_MaxConcurrentConnections);
+    private static readonly SemaphoreSlim _fcgiSem = new SemaphoreSlim(Startup.config.FCGI_MaxConcurrentConnections, Startup.config.FCGI_MaxConcurrentConnections);
     private static readonly string LocalIP = IPFinder.GetLocalIPAddress();
     // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
     public FastCGIClient(string conn = "127.0.0.1:9000")
@@ -78,6 +78,13 @@ public class FastCGIClient
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
         }
+        if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsync("Server busy: Too many concurrent requests");
+            return;
+        }
+
         // Better — span-based, zero allocation
         var relative = path.AsSpan(Startup.BackendDir.Length).TrimStart('/');
         int slash = relative.IndexOf('/');
@@ -134,6 +141,7 @@ public class FastCGIClient
         }
 #endif
         await ExecuteFcgiScriptAsyncStream(context, GetRequestId(), env);
+        // _fcgiSem.Release(); // <-- here?
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -148,14 +156,9 @@ public class FastCGIClient
     0x00, FastCGIConstants.ROLE_RESPONDER, FastCGIConstants.FCGI_KEEP_CONN,
     0x00, 0x00, 0x00, 0x00, 0x00
     };
+    /// <summary>assumes semaphore is already held and Releases it after finishing connection</summary>
     public async Task ExecuteFcgiScriptAsyncStream(HttpContext context, ushort requestId, Dictionary<string, string> env)
     {
-        if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
-        {
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsync("Server busy: Too many concurrent requests");
-            return;
-        }
         // Try to get an existing connection from the pool
         if (!_connectionPool.TryDequeue(out TcpUnixClient? client) || !client.Connected)
         {
