@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
@@ -13,6 +14,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -446,7 +448,7 @@ namespace WebServer
             }
             return hash;
         }
-        public static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length)
+        public static async Task StreamFileUsingBodyWriter(HttpContext context, string file, long start, long length) // +10-30% vs .SendFileAsync() when sendfile(2) is unavailable (almost always due to http/2 and UseCompression, among other things causing Kestrel to fallback)
         {
             const int bufferSize = 16384; // 16 KB chunks
             System.IO.Pipelines.PipeWriter bodyWriter = context.Response.BodyWriter;
@@ -692,10 +694,12 @@ namespace WebServer
                     {
                         context.Response.Headers[header.Key] = header.Value.ToArray();
                     }
+
                     // Stream the response body back to the client
                     using (var responseStream = await responseMessage.Content.ReadAsStreamAsync())
                     {
-                        await responseStream.CopyToAsync(context.Response.Body);
+                        await WritePipe(context, responseStream); // <-- new
+                        // await responseStream.CopyToAsync(context.Response.Body); // <-- old
                     }
                 }
                 return;
@@ -759,6 +763,57 @@ namespace WebServer
             await Task.WhenAny(serverToClient, clientToServer);
             // await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
             // clientWebSocket.Dispose();
+        }
+        /// <summary>Efficient Stream -> BodyWriter</summary>
+        public static async Task WritePipe(HttpContext ctx, Stream source)
+        {
+            PipeWriter writer = ctx.Response.BodyWriter;
+            CancellationToken abort = ctx.RequestAborted;
+
+            const int BufferSize = 32768;
+            const int FlushThreshold = 65536;
+
+            int pending = 0;
+
+            while (true)
+            {
+                Memory<byte> mem = writer.GetMemory(BufferSize);
+
+                ValueTask<int> readTask = source.ReadAsync(mem, abort);
+
+                int read = readTask.IsCompletedSuccessfully
+                    ? readTask.Result
+                    : await readTask;
+
+                if (read <= 0)
+                    break;
+
+                writer.Advance(read);
+
+                pending += read;
+
+                if (pending >= FlushThreshold)
+                {
+                    pending = 0;
+
+                    ValueTask<FlushResult> flushTask = writer.FlushAsync(abort);
+
+                    FlushResult flush = flushTask.IsCompletedSuccessfully
+                        ? flushTask.Result
+                        : await flushTask;
+
+                    if (flush.IsCanceled || flush.IsCompleted)
+                        return;
+                }
+            }
+
+            if (pending != 0)
+            {
+                ValueTask<FlushResult> flushTask = writer.FlushAsync(abort);
+
+                if (!flushTask.IsCompletedSuccessfully)
+                    await flushTask;
+            }
         }
 
         private static string ResolveTestString(string testString, HttpContext context) =>
