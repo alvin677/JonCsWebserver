@@ -1245,12 +1245,14 @@ namespace WebServer
 
         static void UpdateIndex(string filePath)
         {
+            string? currFolder = Path.GetDirectoryName(filePath)?.Replace(Path.DirectorySeparatorChar, '/');
+            if (currFolder == null) return; // root path. Should not happen.
             if (File.Exists(filePath))
             {
+                RemoveFromIndex(currFolder); // Removes reference to index.x from parent dir // Properly removes ref to Assembly before loading anew below.
                 IndexFile(filePath);
             }
-            string? currFolder = Path.GetDirectoryName(filePath);
-            if(currFolder != null) IndexDirectory(currFolder.Replace(Path.DirectorySeparatorChar, '/'));
+            IndexDirectory(currFolder); // Updates which file to point to.
         }
 
         static void RemoveFromIndex(string filePath)
