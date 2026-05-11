@@ -25,6 +25,7 @@ namespace WebServer
             context.Response.Headers.SetCookie = Startup.config.SessionCookieName + "=" + sessID + "; Secure; Httponly; Path=/; SameSite=Lax; Expires=" + DateTime.UtcNow.AddDays(30);
             return session;
         }
+        /// <summary>You may want to sanitize id.</summary>
         public static async Task<Dictionary<string, JsonElement>?> GetSess(string? id)
         {
             if (id == null)
@@ -52,8 +53,8 @@ namespace WebServer
             if (Startup.Sessions.TryGetValue(id, out Dictionary<string, JsonElement>? gg)) return gg;
             try
             {
-                string Sess = await File.ReadAllTextAsync(Path.Combine(Startup.config.SessionsDir, id));
-                gg = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Sess, JsonOpts);
+                string Sess = await File.ReadAllTextAsync(Path.Combine(Startup.config.SessionsDir, id)); // Potential improvement: embedded KV (LMDB)
+                gg = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(Sess, JsonOpts); // only works for files with the right syntax
                 if (gg != null) Startup.Sessions[id] = gg;
                 return gg;
             }
@@ -62,9 +63,18 @@ namespace WebServer
                 return null;
             }
         }
+        /// <summary>Do not forget to sanitize id!</summary>
         public static async Task SaveSess(string id, Dictionary<string, JsonElement> data)
         {
             await File.WriteAllTextAsync(Path.Combine(Startup.config.SessionsDir, id), JsonSerializer.Serialize(data, JsonOpts));
+        }
+        public static Task SaveSessSafe(string id, Dictionary<string,JsonElement> data)
+        {
+            if (id == null || id.Contains(".."))
+            {
+                throw new ArgumentException("Invalid file path");
+            }
+            return SaveSess(id, data);
         }
         public static string GenerateRandomId(int length = 8)
         {
