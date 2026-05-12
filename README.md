@@ -300,14 +300,6 @@ public class Is_CsScript
 ```
 More advanced backend example:
 ```cs
-global using System;
-global using System.IO;
-global using System.Linq;
-global using System.Collections.Generic;
-global using System.Threading.Tasks;
-global using Microsoft.AspNetCore.Http;
-global using Microsoft.Extensions.Primitives;
-
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 using System.Text.Json;
@@ -395,6 +387,14 @@ mv bin/Release/net10.0/MyLibrary.dll /var/www/localhost/example/index._csdll
 (**Works since version 1.73**) 
 For direct compilation write files ending with `._cs`:
 ```cs
+global using System;
+global using System.IO;
+global using System.Linq;
+global using System.Collections.Generic;
+global using System.Threading.Tasks;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.Extensions.Primitives;
+
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 // using WebServer;
