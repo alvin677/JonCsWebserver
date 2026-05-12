@@ -302,6 +302,7 @@ More advanced backend example:
 ```cs
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
+using System.Text.Json;
 using System.IO;
 using WebServer; // WebServer.Startup, WebServer.Session
 public class Is_CsScript
@@ -311,7 +312,7 @@ public class Is_CsScript
         // Startup.RemoveFromFileLead(ToKey("/path/send")); // can be used to remove an endpoint at anytime
         Startup.AddToFileLead(ToKey("/path/send"), ExampleManuallyAddedEndpoint); // "native" would be: /path/send/index._cs, but by adding it manually here we have better and easier cross-control. // can be used anytime to add fast-fetch endpoints.
     }
-    public static async Task Run(HttpContext context, string path) // "native", runs per-request at e.g. /path/index._cs
+    public static async Task Run(HttpContext context, string path) // "native", runs per-request at e.g. /index._cs
     {
         await context.Response.WriteAsync("example");
     }
