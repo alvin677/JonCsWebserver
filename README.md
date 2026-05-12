@@ -615,7 +615,7 @@ Transfer/sec:    245.27MB
 Requests/sec:  72701.71
 Transfer/sec:     21.84MB
 ```
-How does it handle mixed workloads?
+How does it handle mixed workloads running at the same time?
 ```bash
 Running 10s test @ https://jonhosting.com/bmp.png # 14K
   8 threads and 1050 connections
