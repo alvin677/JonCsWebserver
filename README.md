@@ -451,6 +451,7 @@ To support PHP, install php-fpm with `apt install php-fpm` (Manual: https://www.
   <summary>Test how much traffic the webserver can handle.</summary>
 
   ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	| Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `k6`
+  All benchmarks for this were done with wrk and webserver running on the same system.
   Roughly 500% CPU utilization (2x CPUs = 28 cores) (~2000% k6 usage)
   ```bash
      execution: local
