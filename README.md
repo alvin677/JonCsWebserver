@@ -307,7 +307,7 @@ using System.IO;
 using WebServer; // WebServer.Startup, WebServer.Session
 public class Is_CsScript
 {
-    static Is_CsScript() // runs on first "load". index._cs/index._csdll is loaded through HotReloadContext.
+    static Is_CsScript() // runs on "load", triggered on first request. index._cs/index._csdll is loaded through HotReloadContext.
     {
         // Startup.RemoveFromFileLead(ToKey("/path/send")); // can be used to remove an endpoint at anytime
         Startup.AddToFileLead(ToKey("/path/send"), ExampleManuallyAddedEndpoint); // "native" would be: /path/send/index._cs, but by adding it manually here we have better and easier cross-control. // can be used anytime to add fast-fetch endpoints.
