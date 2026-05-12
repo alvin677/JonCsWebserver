@@ -613,6 +613,50 @@ Transfer/sec:    245.27MB
 Requests/sec:  72701.71
 Transfer/sec:     21.84MB
 ```
+How does it handle mixed workloads?
+```bash
+Running 10s test @ https://jonhosting.com/bmp.png # 14K
+  8 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    30.09ms   31.24ms 510.85ms   86.01%
+    Req/Sec     4.91k     1.54k    9.83k    72.52%
+  366570 requests in 10.08s, 4.68GB read
+Requests/sec:  36350.19
+Transfer/sec:    475.20MB
+Running 10s test @ http://api.jonhosting.com/t.txt # 2 bytes
+  8 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    24.87ms   33.34ms 509.58ms   89.69%
+    Req/Sec     6.65k     2.35k   18.50k    74.64%
+  513731 requests in 10.10s, 132.77MB read
+  Socket errors: connect 0, read 1, write 0, timeout 0
+Requests/sec:  50880.32
+Transfer/sec:     13.15MB
+Running 10s test @ http://api.jonhosting.com/hash?i=input # Simple hashing string->ulong
+  8 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    28.52ms   45.38ms 512.95ms   94.63%
+    Req/Sec     6.97k     2.39k   19.63k    75.48%
+  541631 requests in 10.08s, 131.20MB read
+Requests/sec:  53758.77
+Transfer/sec:     13.02MB
+Running 10s test @ http://jonhosting.com/test.njs # singlethreaded nodejs backend (one running on https - additional overhead)
+  8 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   272.01ms   75.80ms 724.72ms   80.67%
+    Req/Sec   520.62    318.93     1.34k    66.67%
+  37595 requests in 10.06s, 33.06MB read
+Requests/sec:   3735.72
+Transfer/sec:      3.28MB
+Running 10s test @ https://jontube.jonhosting.com/test.php # FCGI over UnixSocket to PHP-FPM
+  8 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   228.88ms   45.96ms 582.41ms   78.39%
+    Req/Sec   558.20    178.08     1.85k    77.42%
+  41725 requests in 10.09s, 12.54MB read
+Requests/sec:   4134.38
+Transfer/sec:      1.24MB
+```
   ### [AMD Ryzen 5 5600X](https://www.amd.com/en/products/processors/desktops/ryzen/5000-series/amd-ryzen-5-5600x.html)	| ArchLinux (2026-03-31) | Tests done using `wrk`
   Roughly 500% (~44%) CPU utilization (6 cores) (~300%, or ~25%, wrk usage)
 
