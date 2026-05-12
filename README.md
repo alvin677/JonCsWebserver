@@ -298,6 +298,32 @@ public class Is_CsScript
     }
 }
 ```
+More advanced backend example:
+```cs
+using Microsoft.AspNetCore.Http;
+using System.Threading.Tasks;
+using WebServer; // WebServer.Startup, WebServer.Session
+public class Is_CsScript
+{
+    static Is_CsScript() // runs on first "load". index._cs/index._csdll is loaded through HotReloadContext.
+    {
+        // Startup.RemoveFromFileLead(ToKey("/path/send")); // can be used to remove an endpoint at anytime
+        Startup.AddToFileLead(ToKey("/path/send"), ExampleManuallyAddedEndpoint); // "native" would be: /path/send/index._cs, but by adding it manually here we have better and easier cross-control. // can be used anytime to add fast-fetch endpoints.
+    }
+    public static async Task Run(HttpContext context, string path) // "native", runs per-request at e.g. /path/index._cs
+    {
+        await context.Response.WriteAsync("example");
+    }
+    static async Task ExampleManuallyAddedEndpoint(HttpContext ctx, string path)
+    {
+        ctx.Response.Headers.CacheControl = "max-age=1";
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsync("{}");
+    }
+    static readonly string _domainPrefix = Path.GetFileName(Path.GetDirectoryName(typeof(Is_CsScript).Assembly.Location)!);
+    static string ToKey(string p) => Startup.BackendDir + _domainPrefix + p;
+}
+```
 </details>
 <details>
   <summary>Quick C# -> .dll compile</summary>
