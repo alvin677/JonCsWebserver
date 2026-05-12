@@ -300,6 +300,14 @@ public class Is_CsScript
 ```
 More advanced backend example:
 ```cs
+global using System;
+global using System.IO;
+global using System.Linq;
+global using System.Collections.Generic;
+global using System.Threading.Tasks;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.Extensions.Primitives;
+
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 using System.Text.Json;
