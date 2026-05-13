@@ -2,6 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace WebServer
 {
@@ -229,11 +230,13 @@ namespace WebServer
 
             // MinRequestBodyDataRate = new MinDataRate(bytesPerSecond: bytesPerSecond, gracePeriod: TimeSpan.FromSeconds(gracePeriod));
         }
+        private static readonly JsonStringEnumConverter EnumConverter = new();
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             WriteIndented = true,
             PropertyNameCaseInsensitive = true, // matches Newtonsoft's default behavior
-            Converters = { new JsonStringEnumConverter() } // support string *and* num for enums
+            Converters = { EnumConverter }, // support string *and* num for enums
+            TypeInfoResolver = ConfigJsonContext.Default
         };
 
         public static Config Load(string filePath)
@@ -255,5 +258,9 @@ namespace WebServer
             string json = JsonSerializer.Serialize(this, JsonOpts);
             await File.WriteAllTextAsync(filePath, json);
         }
+    }
+    [JsonSerializable(typeof(Config))]
+    internal partial class ConfigJsonContext : JsonSerializerContext
+    {
     }
 }
