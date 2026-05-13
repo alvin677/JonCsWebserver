@@ -13,18 +13,7 @@ namespace WebServer
     }
     public sealed class FastFileLogger : ILogger
     {
-        private static readonly ConcurrentQueue<string> Queue = new();
-        private static readonly AutoResetEvent Signal = new(false);
-
-        static FastFileLogger()
-        {
-            Thread t = new(WriterLoop)
-            {
-                IsBackground = true,
-                Name = "FastFileLogger"
-            };
-            t.Start();
-        }
+        private static readonly object Lock = new();
 
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
@@ -33,48 +22,22 @@ namespace WebServer
             => logLevel >= LogLevel.Error;
 
         public void Log<TState>(
-    LogLevel logLevel,
-    EventId eventId,
-    TState state,
-    Exception? exception,
-    Func<TState, Exception?, string> formatter)
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
         {
             if (logLevel < LogLevel.Error)
                 return;
 
-            string msg = formatter(state, exception);
+            string msg =
+                $"[{DateTimeOffset.UtcNow:O}] [{logLevel}] " +
+                $"{formatter(state, exception)}\n{exception}\n";
 
-            Queue.Enqueue(
-                $"[{DateTimeOffset.UtcNow:O}] [{logLevel}] {msg}\n{exception}\n"
-            );
-
-            Signal.Set();
-        }
-        private static void WriterLoop()
-        {
-            using var fs = new FileStream(
-                "./joncserror.log",
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.ReadWrite,
-                1 << 16);
-
-            using var sw = new StreamWriter(fs, Encoding.UTF8, 1 << 16);
-
-            List<string> batch = new(256);
-
-            while (true)
+            lock (Lock)
             {
-                Signal.WaitOne();
-
-                while (Queue.TryDequeue(out string? s))
-                    batch.Add(s);
-
-                for (int i = 0; i < batch.Count; i++)
-                    sw.WriteLine(batch[i]);
-
-                sw.Flush();
-                batch.Clear();
+                File.AppendAllText("./joncserror.log", msg);
             }
         }
     }
