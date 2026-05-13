@@ -718,50 +718,51 @@ namespace WebServer
         /// <summary>user (client), proxyClient (endpoint)</summary>
         public static Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
-            // User -> C# -> Endpoint
-            Task serverToClient = Task.Run(async () =>
-            {
-                byte[] buff = new byte[1024];
-                ArraySegment<byte> buffer = new ArraySegment<byte>(buff);
-                while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
-                {
-                    WebSocketReceiveResult result = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
-
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
-                        break;
-                    }
-
-                    await clientWebSocket.SendAsync(new ArraySegment<byte>(buff, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
-                }
-                Console.WriteLine("Proxy websock kestrel->endpoint closed.");
-            });
-
-            // Endpoint -> C# -> Client
-            Task clientToServer = Task.Run(async () =>
-            {
-                byte[] buff = new byte[8192];
-                ArraySegment<byte> buffer = new ArraySegment<byte>(buff);
-                while (webSocket.State == WebSocketState.Open && clientWebSocket.State == WebSocketState.Open)
-                {
-                    WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(buffer, CancellationToken.None);
-
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
-                        break;
-                    }
-
-                    await webSocket.SendAsync(new ArraySegment<byte>(buff, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
-                }
-                Console.WriteLine("Proxy websock endpoint->kestrel closed.");
-            });
-
-            // Wait for either direction to close.
+            Task serverToClient = PumpClientToEndpoint(webSocket, clientWebSocket);
+            Task clientToServer = PumpEndpointToClient(clientWebSocket, webSocket);
             return Task.WhenAny(serverToClient, clientToServer);
-            // await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
-            // clientWebSocket.Dispose();
+        }
+        private static async Task PumpClientToEndpoint(WebSocket src, ClientWebSocket dst)
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(1024);
+            try
+            {
+                while (src.State == WebSocketState.Open && dst.State == WebSocketState.Open)
+                {
+                    ValueWebSocketReceiveResult result = await src.ReceiveAsync(buffer.AsMemory(), CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await dst.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
+                        break;
+                    }
+                    await dst.SendAsync(buffer.AsMemory(0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+        private static async Task PumpEndpointToClient(ClientWebSocket src, WebSocket dst)
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
+            try
+            {
+                while (src.State == WebSocketState.Open && dst.State == WebSocketState.Open)
+                {
+                    ValueWebSocketReceiveResult result = await src.ReceiveAsync(buffer.AsMemory(), CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await dst.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
+                        break;
+                    }
+                    await dst.SendAsync(buffer.AsMemory(0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         /// <summary>Efficient Stream -> BodyWriter</summary>
         public static async Task WritePipe(HttpContext ctx, Stream source)
