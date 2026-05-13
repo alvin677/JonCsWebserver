@@ -289,11 +289,11 @@ public class Program
                 });
                 webBuilder.ConfigureLogging(logging => {
                     logging.ClearProviders();
-                    if (Startup.config.Logging)
+                    /*if (Startup.config.Logging)
                     {
                         logging.SetMinimumLevel(LogLevel.Error);
                         logging.AddProvider(new FastFileLoggerProvider());
-                    }
+                    }*/
                 });
                 webBuilder.ConfigureKestrel((context, options) =>
                 {
