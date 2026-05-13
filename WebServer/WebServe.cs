@@ -373,7 +373,7 @@ namespace WebServer
                         return errHandler(context);
                     }
                     return context.Response.WriteAsync(error404);
-                    return next(context);
+                    return next(context); // Need to be here to skip app.Use error.
 #if DEBUG
                     } catch(Exception e){
                     Console.WriteLine(e);
