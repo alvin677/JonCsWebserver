@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebSockets;
 using Microsoft.CodeAnalysis;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
@@ -23,7 +22,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
-using System.Text.Json;
 using System.Threading.RateLimiting;
 using Wasmtime;
 
