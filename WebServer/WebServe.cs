@@ -157,9 +157,9 @@ namespace WebServer
             if (config.Logging) app.UseHttpLogging();
             if (config.DebugPages) app.UseDeveloperExceptionPage();
             if (config.ServerMetrics)
-                app.Use(async (context, next) => {
+                app.Use((context, next) => {
                     Interlocked.Increment(ref Program.totalRequests);
-                    await next(context);
+                    return next(context);
                 });
             if (config.RateLimitReq != 0)
             {
@@ -192,7 +192,7 @@ namespace WebServer
                     endpoints.Map("/{**catchAll}", async context =>
                 */
                 // Manual Middleware should avoid overhead
-                app.Use(async(context, next) =>
+                app.Use((context, next) =>
                 {
 #if DEBUG
                 try
@@ -255,7 +255,7 @@ namespace WebServer
                             if (slashCount >= slashHashes.Length)
                             {
                                 context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                return;
+                                return Task.CompletedTask;
                             }
 
                             // Snapshot hash before this segment (for fallback to parent directory)
@@ -284,8 +284,7 @@ namespace WebServer
                             for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
                                 headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                        await entry.Handler(context, entry.FilePath);
-                        return;
+                        return entry.Handler(context, entry.FilePath);
                     }
                     else if (config.LoopFindEndpoint)
                     {
@@ -300,8 +299,7 @@ namespace WebServer
                                     for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
                                         headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                                await entry.Handler(context, entry.FilePath);
-                                return;
+                                return entry.Handler(context, entry.FilePath);
                             }
                         }
                     }
@@ -312,7 +310,7 @@ namespace WebServer
                         if (htRules.DenyAll)
                         {
                             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                            return;
+                            return Task.CompletedTask;
                         }
 
                         string reqPath = context.Request.Path.Value ?? "/";
@@ -323,7 +321,7 @@ namespace WebServer
                             {
                                 context.Response.StatusCode = redirect.StatusCode;
                                 headers.Location = redirect.Target;
-                                return;
+                                return Task.CompletedTask;
                             }
                         }
 
@@ -359,7 +357,7 @@ namespace WebServer
                             {
                                 context.Response.StatusCode = rewrite.RedirectCode;
                                 headers.Location = rewPath;
-                                return;
+                                return Task.CompletedTask;
                             }
 
                             // Internal rewrite — update path and re-lookup
@@ -374,11 +372,10 @@ namespace WebServer
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     if (ErrorDict.TryGetValue(hostValue, out var errHandler))
                     {
-                        await errHandler(context);
-                        return;
+                        return errHandler(context);
                     }
-                    await context.Response.WriteAsync(error404);
-                    await next(context);
+                    return context.Response.WriteAsync(error404);
+                    return next(context);
 #if DEBUG
                     } catch(Exception e){
                     Console.WriteLine(e);
@@ -475,12 +472,12 @@ namespace WebServer
             // await bodyWriter.CompleteAsync();
         }
         /// <summary>Static file handling. Checks Last-modified, Range, and sets headers.</summary>
-        public static async Task DefHandle(HttpContext context, string file)
+        public static Task DefHandle(HttpContext context, string file)
         {
             if (context.Request.Method == HttpMethods.Options)
             {
                 context.Response.StatusCode = StatusCodes.Status204NoContent;
-                return;
+                return Task.CompletedTask;
             }
             if (FileIndex.TryGetValue(file, out long[]? LastMod))
             {
@@ -495,7 +492,7 @@ namespace WebServer
                     if (LastMod[0] <= ifModifiedSince.ToUnixTimeSeconds())
                     {
                         context.Response.StatusCode = StatusCodes.Status304NotModified;
-                        return;
+                        return Task.CompletedTask;
                     }
                 }
                 if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
@@ -510,7 +507,7 @@ namespace WebServer
                         {
                             context.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
                             context.Response.Headers["Content-Range"] = "bytes */" + LastMod[1]; // No valid range
-                            return;
+                            return Task.CompletedTask;
                         }
                         long contentLength = end - start + 1;
                         if (contentLength != LastMod[1]) // only chunk if not requesting whole file
@@ -518,27 +515,25 @@ namespace WebServer
                             context.Response.StatusCode = StatusCodes.Status206PartialContent;
                             context.Response.ContentLength = contentLength;
                             context.Response.Headers["Content-Range"] = "bytes " + start + "-" + end + "/" + LastMod[1];
-                            if (context.Request.Method == HttpMethods.Head) return;
-                            await StreamFileUsingBodyWriter(context, file, start, contentLength);
-                            return;
+                            if (context.Request.Method == HttpMethods.Head) return Task.CompletedTask;
+                            return StreamFileUsingBodyWriter(context, file, start, contentLength);
                         }
                     }
                 }
                 context.Response.ContentLength = LastMod[1];
-                if (context.Request.Method == HttpMethods.Head) return;
-                await StreamFileUsingBodyWriter(context, file, 0, LastMod[1]); // sendfile(2) is only accessible in HTTP/1.1 with no compression. Considering HTTP/2 pretty much being the standard, this might be the best possible compromise in our case.
-                return;
+                if (context.Request.Method == HttpMethods.Head) return Task.CompletedTask;
+                return StreamFileUsingBodyWriter(context, file, 0, LastMod[1]); // sendfile(2) is only accessible in HTTP/1.1 with no compression. Considering HTTP/2 pretty much being the standard, this might be the best possible compromise in our case.
             }
-            if (context.Request.Method == HttpMethods.Head) return;
-            await context.Response.SendFileAsync(file);
+            if (context.Request.Method == HttpMethods.Head) return Task.CompletedTask;
+            return context.Response.SendFileAsync(file);
         }
         /// <summary>Adds header to tell Client to download, then calls DefHandle.</summary>
-        public static async Task DefDownload(HttpContext context, string file)
+        public static Task DefDownload(HttpContext context, string file)
         {
             int slash = file.LastIndexOf('/');
             string fn = slash >= 0 ? file[(slash + 1)..] : "undefined";
             context.Response.Headers["content-disposition"] = "attachment; filename=" + fn;
-            await DefHandle(context, file);
+            return DefHandle(context, file);
         }
         private static HttpClientHandler handler = new HttpClientHandler {
             UseCookies = false
@@ -1150,13 +1145,13 @@ namespace WebServer
                 }
                 else
                 {
-                    ErrorDict[dom] = async context =>
-                        await context.Response.WriteAsync(errcontent);
+                    ErrorDict[dom] = context =>
+                        context.Response.WriteAsync(errcontent);
 
                     if (!FileLead.ContainsKey(folderHash))
                     {
                         FileLead[folderHash] = new EndpointEntry(
-                            async (context, path) => await context.Response.WriteAsync(errcontent),
+                            (context, path) => context.Response.WriteAsync(errcontent),
                             Folder,
                             null);
                     }
@@ -1510,7 +1505,7 @@ namespace WebServer
         public static void LoadWasm(string file)
         {
             using var module = Wasm.Load(file);
-            AddToFileLead(file, async (context, path) =>
+            AddToFileLead(file, (context, path) =>
             {
                 using var store = new Store(Wasm.WasmEngine);
                 var wasmCtx = new Wasm.WasmContext { Http = context };
@@ -1522,7 +1517,7 @@ namespace WebServer
                 if (memory == null)
                 {
                     context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                    return;
+                    return Task.CompletedTask;
                 }
                 wasmCtx.Memory = memory;
 
@@ -1530,11 +1525,11 @@ namespace WebServer
                 if (handle == null)
                 {
                     context.Response.StatusCode = StatusCodes.Status501NotImplemented;
-                    return;
+                    return Task.CompletedTask;
                 }
                 handle();
 
-                await context.Response.BodyWriter.FlushAsync();
+                return context.Response.BodyWriter.FlushAsync().AsTask();
             });
         }
         /// <summary>Same as LoadCompiledFunc</summary>
