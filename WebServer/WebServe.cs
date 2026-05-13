@@ -716,7 +716,7 @@ namespace WebServer
             }
         }
         /// <summary>user (client), proxyClient (endpoint)</summary>
-        public static async Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
+        public static Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
             // User -> C# -> Endpoint
             Task serverToClient = Task.Run(async () =>
@@ -759,7 +759,7 @@ namespace WebServer
             });
 
             // Wait for either direction to close.
-            await Task.WhenAny(serverToClient, clientToServer);
+            return Task.WhenAny(serverToClient, clientToServer);
             // await clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by server", CancellationToken.None);
             // clientWebSocket.Dispose();
         }
