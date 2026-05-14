@@ -623,6 +623,27 @@ Transfer/sec:    245.27MB
 Requests/sec:  72701.71
 Transfer/sec:     21.84MB
 ```
+Serving 15KB html file:
+```
+jon@debian:~/$ nice -n 19 wrk -t 13 -c 1050 -d 10s http://music.jonhosting.com/
+Running 10s test @ http://music.jonhosting.com/
+  13 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     4.26ms    3.18ms  42.96ms   82.06%
+    Req/Sec    19.33k     1.56k   34.97k    74.08%
+  2506718 requests in 10.10s, 35.68GB read
+Requests/sec: 248193.86
+Transfer/sec:      3.53GB
+jon@debian:~/$ nice -n 19 wrk -t 12 -c 1050 -d 10s https://music.jonhosting.com/
+Running 10s test @ https://music.jonhosting.com/
+  12 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     9.41ms   17.70ms 389.96ms   96.58%
+    Req/Sec    12.46k     2.97k   16.89k    91.90%
+  1470810 requests in 10.10s, 20.94GB read
+Requests/sec: 145623.76
+Transfer/sec:      2.07GB
+```
 How does it handle mixed workloads running at the same time?
 ```bash
 Running 10s test @ https://jonhosting.com/bmp.png # 14K
