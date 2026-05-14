@@ -535,7 +535,7 @@ Serving 11.5KB html file (after new update, using our custom function):
     data_sent......................: 185 MB  6.2 MB/s
 running (0m30.0s), 0000/2800 VUs, 2495642 complete and 0 interrupted iterations
 ```
-  ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	| Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `wrk`
+  ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	with PNY SATA SSD | Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `wrk`
   All benchmarks for this one were done with wrk and webserver running on the same system.
   Roughly 2000% CPU utilization (2x CPUs = 28 cores) (~500% wrk usage)
   
