@@ -847,6 +847,8 @@ namespace WebServer
                 idx++;
             }
             defaultHeaderCount = defaultHeaderKeys.Length;
+            WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
+            // FCGI_QueueTimeout = TimeSpan.FromSeconds(config.FCGI_QueueTimeout);
             Extensions.Clear();
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {
@@ -895,9 +897,6 @@ namespace WebServer
                 handler.CheckCertificateRevocationList = false;
             }
             else handler.ServerCertificateCustomValidationCallback = null;
-
-            WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout);
-            FCGI_QueueTimeout = TimeSpan.FromSeconds(config.FCGI_QueueTimeout);
 
             string executableDir = Path.GetDirectoryName(Environment.ProcessPath!) ?? AppContext.BaseDirectory;
             string depsPath = Path.Combine(executableDir, "deps");

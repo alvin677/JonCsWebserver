@@ -26,12 +26,13 @@ public class FastCGIClient
     private static readonly int MinParamBufferSize = 16 * 1024; // 16KB, tune if needed
     public ConnectionInfo connect;
     private readonly ConcurrentQueue<TcpUnixClient> _connectionPool = new ConcurrentQueue<TcpUnixClient>();
-    private static readonly SemaphoreSlim _fcgiSem = new SemaphoreSlim(Startup.config.FCGI_MaxConcurrentConnections, Startup.config.FCGI_MaxConcurrentConnections);
+    // private readonly SemaphoreSlim _fcgiSem;
     private static readonly string LocalIP = IPFinder.GetLocalIPAddress();
     // private const int MaxPoolSize = Startup.config.PHP_MaxPoolSize; // Adjust based on usage scenario
     public FastCGIClient(string conn = "127.0.0.1:9000")
     {
         connect = ParseEndpoint(conn);
+        // _fcgiSem = new SemaphoreSlim(Startup.config.FCGI_MaxConcurrentConnections,Startup.config.FCGI_MaxConcurrentConnections);
     }
     public enum EndpointType
     {
@@ -78,12 +79,14 @@ public class FastCGIClient
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
         }
+        /*
         if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsync("Server busy: Too many concurrent requests");
             return;
         }
+        */
 
         // Better — span-based, zero allocation
         var relative = path.AsSpan(Startup.BackendDir.Length).TrimStart('/');
@@ -308,7 +311,7 @@ public class FastCGIClient
                 Console.WriteLine("TcpClient was closed..");
 #endif
             }
-            _fcgiSem.Release();
+            // _fcgiSem.Release();
         }
     }
     /// <summary>Extracted to keep the hot loop clean — parses PHP-FPM response headers directly from span</summary>
