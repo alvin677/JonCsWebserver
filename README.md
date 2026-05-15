@@ -28,6 +28,7 @@ The json below contains comments about what each option does. The out-of-the-box
   "AllowSynchronousIO": false,
   "ForceTLS": false, // Force TLS when proxying?
   "BufferFastCGIResponse": false, // Tweak PHP performance depending on high/low scale
+  "Max_QUIC_Streams": 0,
   "MaxConcurrentConnections": null, // Max global concurrent HTTP(S)-connections
   "MaxConcurrentUpgradedConnections": 10000, // Max global concurrent WS(S)-connections
   "MaxRequestBodySize": 8000000000, // Max POST-length
@@ -46,6 +47,8 @@ The json below contains comments about what each option does. The out-of-the-box
   "FCGI_ReceiveTimeout": 300000,
   "FCGI_SendTimeout": 300000,
   "FCGI_MaxPoolSize": 20,
+  "FCGI_QueueTimeout": 10,
+  "FCGI_MaxConcurrentConnections": 5000,
   "ClearSessEveryXMin": 5,
   "WebSocketTimeout": 300,
   "WebSocketEndpointTimeout": 30,
