@@ -178,7 +178,7 @@ public class FastCGIClient
 #if DEBUG
         Console.WriteLine("Connected.");
 #endif
-        using var stream = client.Stream;
+        var stream = client.Stream; // no 'using'; keep alive for pooling feature
 
         // --- Step 1: Prepare BEGIN + PARAMS ---
         IStreamWriter fastCgiStream = Startup.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
