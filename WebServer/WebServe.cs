@@ -123,7 +123,7 @@ namespace WebServer
             {
                 options.Level = Startup.config.CompressionLevel;
             });
-            if (Startup.config.Logging) services.AddHttpLogging(options => { });
+            // if (Startup.config.Logging) services.AddHttpLogging(options => { });
             if (Startup.config.RateLimitReq != 0)
                 services.AddRateLimiter(options => { });
             if(Startup.config.RequestTimeout != 0)
@@ -152,7 +152,7 @@ namespace WebServer
                 app.UseRequestTimeouts();
             if (config.MaxBytesPerSecond != 0)
                 app.UseMiddleware<BandwidthLimiterMiddleware>();
-            if (config.Logging) app.UseHttpLogging();
+            // if (config.Logging) app.UseHttpLogging();
             if (config.DebugPages) app.UseDeveloperExceptionPage();
             if (config.ServerMetrics)
                 app.Use((context, next) => {
@@ -848,7 +848,7 @@ namespace WebServer
             }
             defaultHeaderCount = defaultHeaderKeys.Length;
             
-            // FCGI_QueueTimeout = TimeSpan.FromSeconds(config.FCGI_QueueTimeout);
+            FCGI_QueueTimeout = TimeSpan.FromSeconds(config.FCGI_QueueTimeout);
             Extensions.Clear();
             foreach (KeyValuePair<string, string> ext in config.ForwardExt)
             {

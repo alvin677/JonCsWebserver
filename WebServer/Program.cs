@@ -266,6 +266,14 @@ public class Program
         Host.CreateDefaultBuilder(args)
             .ConfigureWebHostDefaults(webBuilder =>
             {
+                webBuilder.UseQuic(options => {
+                    if (Startup.config.Max_QUIC_Streams != 0)
+                    {
+#pragma warning disable CA2252
+                        options.MaxBidirectionalStreamCount = Startup.config.Max_QUIC_Streams;
+#pragma warning restore CA2252
+                    }
+                });
                 webBuilder.ConfigureServices(services => {
                     services.AddResponseCompression(options =>
                     {
@@ -373,7 +381,7 @@ public class Program
                                     return Cert;
                                 return fallbackCert;
                             };
-                        });  
+                        });
                     });
                 });
                 webBuilder.UseStartup<Startup>();

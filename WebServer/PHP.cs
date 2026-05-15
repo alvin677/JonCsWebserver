@@ -72,12 +72,12 @@ public class FastCGIClient
         }
     }
 
-    public async Task Run(HttpContext context, string path)
+    public Task Run(HttpContext context, string path)
     {
         if (Startup.config.MaxRequestBodySize != null && context.Request.ContentLength > Startup.config.MaxRequestBodySize)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            return;
+            return Task.CompletedTask;
         }
         /*
         if (!await _fcgiSem.WaitAsync(Startup.FCGI_QueueTimeout, context.RequestAborted))
@@ -143,7 +143,7 @@ public class FastCGIClient
             Console.WriteLine("env " + item.Key + " = " + item.Value);
         }
 #endif
-        await ExecuteFcgiScriptAsyncStream(context, GetRequestId(), env);
+        return ExecuteFcgiScriptAsyncStream(context, GetRequestId(), env);
         // _fcgiSem.Release(); // <-- here?
     }
 

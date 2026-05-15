@@ -36,6 +36,7 @@ namespace WebServer
         public int RateLimitRefill { get; set; }
         public int RateLimitQueue { get; set; }
         public int MaxFilePathLength { get; set; }
+        public int Max_QUIC_Streams { get; internal set; }
         public int FCGI_ReceiveTimeout { get; set; }
         public int FCGI_SendTimeout { get; set; }
         public int FCGI_MaxConcurrentConnections { get; set; }
@@ -138,6 +139,7 @@ namespace WebServer
             HttpProxyTimeout = 300;
             bytesPerSecond = 240;
             gracePeriod = 5;
+            Max_QUIC_Streams = 0;
             MaxBytesPerSecond = 0; // Maximum Bytes per second SENT to a RemoteAddress (per-IP)
             RequestTimeout = 0; // How long a Request and Response combined can max take. Useful for stalled threads/requests.
             RateLimitTime = 1; // replenishment period in seconds (recommended: 1)
