@@ -178,7 +178,7 @@ public class FastCGIClient
 #if DEBUG
         Console.WriteLine("Connected.");
 #endif
-        var stream = client.Stream;
+        using var stream = client.Stream;
 
         // --- Step 1: Prepare BEGIN + PARAMS ---
         IStreamWriter fastCgiStream = Startup.config.BufferFastCGIResponse ? new BufferedStreamWriter(stream) : new DirectStreamWriter(stream);
