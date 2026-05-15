@@ -564,7 +564,7 @@ namespace WebServer
                     //client.Options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
                     using SocketsHttpHandler websockethandler = new SocketsHttpHandler
                     {
-                        SslOptions = { EnabledSslProtocols = SslProtocols.Tls12, RemoteCertificateValidationCallback = IgnoreCert },
+                        SslOptions = { EnabledSslProtocols = handler.SslProtocols, RemoteCertificateValidationCallback = IgnoreCert },
                         EnableMultipleHttp2Connections = true
                     };
                     client.Options.KeepAliveInterval = WSTimeout;
@@ -889,7 +889,7 @@ namespace WebServer
             foreach (string ext in config.DownloadIfExtension) Extensions[ext] = DefDownload;
 
             httpClient.Timeout = TimeSpan.FromSeconds(config.HttpProxyTimeout);
-            handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+            handler.SslProtocols = config.Rproxy_SslProtocol;
             handler.AllowAutoRedirect = false;
             if (!config.ForceTLS)
             {

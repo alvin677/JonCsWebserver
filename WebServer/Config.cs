@@ -58,6 +58,7 @@ namespace WebServer
         public string[] indexPriority { get; set; } = [];
         public string[] DownloadIfExtension { get; set; } = [];
         public System.IO.Compression.CompressionLevel CompressionLevel { get; set; }
+        public System.Security.Authentication.SslProtocols Rproxy_SslProtocol { get; set; }
         [JsonIgnore]
         public Dictionary<ulong, string> UrlAliasHash { get; set; } = new Dictionary<ulong, string>();
         public Dictionary<string, string[]> ExtTypes { get; set; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -168,6 +169,7 @@ namespace WebServer
             Rand_Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             indexPriority = ["index._csdll", "index._cs", "index.php", "index._wasm", "index.njs", "index.bun", "index.html", "index.htm"];
             CompressionLevel = System.IO.Compression.CompressionLevel.Optimal;
+            Rproxy_SslProtocol = System.Security.Authentication.SslProtocols.Tls12;
             DownloadIfExtension = [
             "zip", "tar", "gz", "rar",
             "jar", "apk",
