@@ -1341,7 +1341,10 @@ namespace WebServer
                 new[] { syntaxTree },
                 _cachedRefs.Value,
                 new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(
-                    Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+                    Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary,
+                    optimizationLevel: Microsoft.CodeAnalysis.OptimizationLevel.Release,
+                    deterministic: true,
+                    concurrentBuild: true));
             using var ms = new MemoryStream();
             var result = compilation.Emit(ms);
             if (!result.Success)
