@@ -238,12 +238,10 @@ namespace WebServer
                     // Per-segment hash accumulation + snapshot after each segment
                     Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
                     int slashCount = 0;
-
                     int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
                     while (i < _path.Length)
                     {
                         if (_path[i] == '/') { i++; continue; }
-
                         int segStart = i;
                         while (i < _path.Length && _path[i] != '/') i++;
 
@@ -256,7 +254,6 @@ namespace WebServer
                                 context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
                                 return Task.CompletedTask;
                             }
-
                             // Snapshot hash before this segment (for fallback to parent directory)
                             slashHashes[slashCount++] = hash;
 
@@ -846,23 +843,16 @@ namespace WebServer
         {
             if (domAliasFromHash.Length == 0) return -1;
             int idx = (int)(hash & DAliasMask);
-
             int start = idx;
-
             do
             {
                 ref var e = ref domAliasFromHash[idx];
-
                 if (e == hash)
                     return idx;
-
                 if (e == 0)
                     break;
-
                 idx = (int)(((uint)idx + 1) & DAliasMask);
-
             } while (idx != start);
-
             return -1;
         }
         static int NextPowerOfTwo(int v)
@@ -973,12 +963,9 @@ namespace WebServer
                     {
                         Console.WriteLine("[WARN] DomainAlias Hash=0 on " + FromDom);
                     }
-
                     int indx = (int)(fromHash & newMask);
-
                     while (newFromHash[indx] != 0)
                         indx = (int)(((uint)indx + 1) & newMask);
-
                     newFromHash[indx] = fromHash;
                     newToHash[indx] = HashSpan(ToDom);
                     newHostStrings[indx] = new HostString(ToDom);
