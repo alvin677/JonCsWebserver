@@ -10,6 +10,11 @@ Launch:
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
 `./WebServer_linux --httpPort=80,8080 --httpsPort=443,8443 --backend=/var/www/dynamic_files`<br/>
 The args you don't send through command are loaded from config instead.
+<details><summary>HTTP/3 / QUIC</summary>
+  
+  QUIC runs over UDP. You may need to install: `apt install libmsquic`
+</details>
+
 ## Configuration
 <details>
   <summary>JonCsWebConfig.json</summary>
@@ -18,8 +23,8 @@ The json below contains comments about what each option does. The out-of-the-box
 **DO NOT USE! IT WILL BREAK JSON SYNTAX.**
 ```json
 {
-  "Logging": false,
-  "DebugPages": false, // Show error pages when webserver errors
+  "Logging": false, // will write errors to `joncserror.log`, useful when a C#-endpoint errors.
+  "DebugPages": false, // Show error pages (displays error as a html) when request errors. Recommended to only use during development and not on production.
   "ServerMetrics": false, // Tracks total requests, and latest rps, rpm, rph
   "LoopFindEndpoint": false, // If true, it tracks backwards until it finds an index (otherwise err404): /path1/path2/index.html -> /path1/path2 -> /path1 -> /
   "EnableHtaccess": false, // .htaccess-support
@@ -27,6 +32,7 @@ The json below contains comments about what each option does. The out-of-the-box
   "Enable_WASM": false, // ._wasm-backend support
   "AllowSynchronousIO": false,
   "ForceTLS": false, // Force TLS when proxying?
+  "Rproxy_SslProtocol": "Tls13", // Set TLS-Protocol for Reverse-Proxy.
   "BufferFastCGIResponse": false, // Tweak PHP performance depending on high/low scale
   "Max_QUIC_Streams": 0,
   "MaxConcurrentConnections": null, // Max global concurrent HTTP(S)-connections
