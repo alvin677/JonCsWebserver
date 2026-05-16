@@ -20,7 +20,6 @@ using System.Net.Security;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.RateLimiting;
 using Wasmtime;
