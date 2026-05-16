@@ -221,7 +221,7 @@ namespace WebServer
                         hash = (hash ^ c) * FNV_PRIME;
                     }
 
-                    int aliasIdx = DomainAliasLookup(hash);
+                    int aliasIdx = DomainAliasLookup(hash); // Whether this is true may vary greatly on WebAdmin. Can be used for www.example.com -> example.com
                     if (aliasIdx >= 0)
                     {
                         context.Request.Host = aliasHostStrings[aliasIdx];
