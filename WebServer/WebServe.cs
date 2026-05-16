@@ -196,11 +196,6 @@ namespace WebServer
                 {
 #endif
                     var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
-                    if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
-                    {
-                        context.Request.Host = new HostString(OtherDomain);
-                        hostValue = OtherDomain;
-                    }
                     ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
                     string? filteredHost = null;
                     ReadOnlySpan<char> hostSpan;
@@ -224,6 +219,13 @@ namespace WebServer
                         char c = hostSpan[k];
                         c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                         hash = (hash ^ c) * FNV_PRIME;
+                    }
+
+                    int aliasIdx = DomainAliasLookup(hash);
+                    if (aliasIdx >= 0)
+                    {
+                        context.Request.Host = aliasHostStrings[aliasIdx];
+                        hash = domAliasToHash[aliasIdx];
                     }
 
                     // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
@@ -834,6 +836,52 @@ namespace WebServer
         #endregion
 
         #region Config
+        public struct DomainAliasEntry
+        {
+            public ulong FromHash; // 0 = not used
+            public ulong ToHash;
+        }
+
+        private static ulong[] domAliasToHash = Array.Empty<ulong>();
+        private static ulong[] domAliasFromHash = Array.Empty<ulong>();
+        private static HostString[] aliasHostStrings = Array.Empty<HostString>();
+        private static ulong DAliasMask;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int DomainAliasLookup(ulong hash)
+        {
+            if (domAliasFromHash.Length == 0) return -1;
+            int idx = (int)(hash & DAliasMask);
+
+            int start = idx;
+
+            do
+            {
+                ref var e = ref domAliasFromHash[idx];
+
+                if (e == hash)
+                    return idx;
+
+                if (e == 0)
+                    break;
+
+                idx = (int)(((uint)idx + 1) & DAliasMask);
+
+            } while (idx != start);
+
+            return -1;
+        }
+        static int NextPowerOfTwo(int v)
+        {
+            v--;
+            v |= v >> 1;
+            v |= v >> 2;
+            v |= v >> 4;
+            v |= v >> 8;
+            v |= v >> 16;
+            return v + 1;
+        }
+
+
         public static void Reload()
         {
             defaultHeaderKeys = new string[config.DefaultHeaders.Count];
@@ -901,6 +949,46 @@ namespace WebServer
             string depsPath = Path.Combine(executableDir, "deps");
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + depsPath);
             ReloadBackendDir(config.BackendDir);
+
+            if (config.DomainAlias.Count == 0)
+            {
+                domAliasFromHash = Array.Empty<ulong>();
+                domAliasToHash = Array.Empty<ulong>();
+                aliasHostStrings = Array.Empty<HostString>();
+                DAliasMask = 0;
+            }
+            else
+            {
+                int size = NextPowerOfTwo(config.DomainAlias.Count * 2);
+                DAliasMask = (ulong)size - 1;
+                domAliasFromHash = new ulong[size];
+                domAliasToHash = new ulong[size];
+                aliasHostStrings = new HostString[size];
+                foreach (var domAlias in config.DomainAlias)
+                {
+                    var FromDom = domAlias.Key;
+                    var ToDom = domAlias.Value;
+                    if (config.DomainFilterEnabled)
+                    {
+                        FromDom = FromDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
+                        ToDom = ToDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
+                    }
+                    ulong fromHash = HashSpan(FromDom);
+                    if (fromHash == 0)
+                    {
+                        Console.WriteLine("[WARN] DomainAlias Hash=0 on " + FromDom);
+                    }
+
+                    int indx = (int)(fromHash & DAliasMask);
+
+                    while (domAliasFromHash[indx] != 0)
+                        indx = (int)(((uint)indx + 1) & DAliasMask);
+
+                    domAliasFromHash[indx] = fromHash;
+                    domAliasToHash[indx] = HashSpan(ToDom);
+                    aliasHostStrings[indx] = new HostString(ToDom);
+                }
+            }
         }
         public static void ReloadBackendDir(string newBackendDir)
         {
