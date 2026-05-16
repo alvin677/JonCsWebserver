@@ -836,11 +836,6 @@ namespace WebServer
         #endregion
 
         #region Config
-        public struct DomainAliasEntry
-        {
-            public ulong FromHash; // 0 = not used
-            public ulong ToHash;
-        }
 
         private static ulong[] domAliasToHash = Array.Empty<ulong>();
         private static ulong[] domAliasFromHash = Array.Empty<ulong>();
@@ -960,10 +955,10 @@ namespace WebServer
             else
             {
                 int size = NextPowerOfTwo(config.DomainAlias.Count * 2);
-                DAliasMask = (ulong)size - 1;
-                domAliasFromHash = new ulong[size];
-                domAliasToHash = new ulong[size];
-                aliasHostStrings = new HostString[size];
+                ulong newMask = (ulong)size - 1;
+                var newFromHash = new ulong[size];
+                var newToHash = new ulong[size];
+                var newHostStrings = new HostString[size];
                 foreach (var domAlias in config.DomainAlias)
                 {
                     var FromDom = domAlias.Key;
@@ -979,15 +974,19 @@ namespace WebServer
                         Console.WriteLine("[WARN] DomainAlias Hash=0 on " + FromDom);
                     }
 
-                    int indx = (int)(fromHash & DAliasMask);
+                    int indx = (int)(fromHash & newMask);
 
-                    while (domAliasFromHash[indx] != 0)
-                        indx = (int)(((uint)indx + 1) & DAliasMask);
+                    while (newFromHash[indx] != 0)
+                        indx = (int)(((uint)indx + 1) & newMask);
 
-                    domAliasFromHash[indx] = fromHash;
-                    domAliasToHash[indx] = HashSpan(ToDom);
-                    aliasHostStrings[indx] = new HostString(ToDom);
+                    newFromHash[indx] = fromHash;
+                    newToHash[indx] = HashSpan(ToDom);
+                    newHostStrings[indx] = new HostString(ToDom);
                 }
+                DAliasMask = newMask;
+                domAliasFromHash = newFromHash;
+                domAliasToHash = newToHash;
+                aliasHostStrings = newHostStrings;
             }
         }
         public static void ReloadBackendDir(string newBackendDir)
