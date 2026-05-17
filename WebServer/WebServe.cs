@@ -227,8 +227,8 @@ namespace WebServer
                         hash = domAliasToHash[aliasIdx];
                     }
 
-                    // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                    if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
+                    // HashHostAndPath(hash, _path) -> uses already-hashed domain hash, a little in-between optimization (extremely rare HIT anyway in normal cases)
+                    if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath))
                     {
                         context.Request.Path = new PathString(newPath); // needed for C#-endpoints
                         _path = newPath.AsSpan(); // update the span used directly below
@@ -954,7 +954,8 @@ namespace WebServer
                     var ToDom = domAlias.Value;
                     if (config.DomainFilterEnabled)
                     {
-                        FromDom = FromDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
+                        ReadOnlySpan<char> FromDom_NoPort = StripPort(FromDom.AsSpan()); // avoid configuration mistakes / remains "compatible" with old configurations
+                        FromDom = FromDom_NoPort.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo);
                         ToDom = ToDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
                     }
                     ulong fromHash = HashSpan(FromDom);
