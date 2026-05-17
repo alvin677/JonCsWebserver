@@ -950,12 +950,12 @@ namespace WebServer
                 var newHostStrings = new HostString[size];
                 foreach (var domAlias in config.DomainAlias)
                 {
-                    var FromDom = domAlias.Key;
+                    ReadOnlySpan<char> FromDom_NoPort = StripPort(domAlias.Key.AsSpan()); // avoid configuration mistakes / remains "compatible" with old configurations
+                    var FromDom = FromDom_NoPort.ToString();
                     var ToDom = domAlias.Value;
                     if (config.DomainFilterEnabled)
                     {
-                        ReadOnlySpan<char> FromDom_NoPort = StripPort(FromDom.AsSpan()); // avoid configuration mistakes / remains "compatible" with old configurations
-                        FromDom = FromDom_NoPort.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo);
+                        FromDom = FromDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
                         ToDom = ToDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
                     }
                     ulong fromHash = HashSpan(FromDom);
