@@ -191,69 +191,69 @@ namespace WebServer
                     endpoints.Map("/{**catchAll}", async context =>
                 */
                 // Manual Middleware should avoid overhead
-
                 if (
 !config.DomainFilterEnabled // No FilterFrom->FilterTo
 && !config.LoopFindEndpoint // No LoopEndpoint usage
+&& !config.EnableHtaccess // no Htaccess usage
 && DAliasMask == 0 // No DomainAlias usage
 && config.UrlAliasHash.Count == 0 // No UrlAlias usage
-&& !config.EnableHtaccess) // no Htaccess usage
+                    )
                 {
                     app.Use((context, next) =>
-                    {
-                        var hostValue = context.Request.Host.Value!;
-                        ReadOnlySpan<char> hostSpan = hostValue.AsSpan();
-                        ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
+                        {
+                            var hostValue = context.Request.Host.Value!;
+                            ReadOnlySpan<char> hostSpan = hostValue.AsSpan();
+                            ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                        // HashHostAndPath(hostSpan, _path) -> does not remove last '/'
-                        // Hash domain:
-                        ulong hash = FNV_OFFSET;
-                        for (int k = 0; k < hostSpan.Length; k++)
-                        {
-                            char c = hostSpan[k];
-                            c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                            hash = (hash ^ c) * FNV_PRIME;
-                        }
-                        // Hash path
-                        int i = 0;
-                        while (i < _path.Length)
-                        {
-                            if (_path[i] == '/') // prevent duplicate slashes // skips trailing '/'
+                            // HashHostAndPath(hostSpan, _path) -> does not remove last '/'
+                            // Hash domain:
+                            ulong hash = FNV_OFFSET;
+                            for (int k = 0; k < hostSpan.Length; k++)
                             {
-                                i++;
-                                continue;
-                            }
-                            hash = (hash ^ '/') * FNV_PRIME;
-                            while (i < _path.Length && _path[i] != '/')
-                            {
-                                char c = _path[i++];
+                                char c = hostSpan[k];
                                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                                 hash = (hash ^ c) * FNV_PRIME;
                             }
-                        }
+                            // Hash path
+                            int i = 0;
+                            while (i < _path.Length)
+                            {
+                                if (_path[i] == '/') // prevent duplicate slashes // skips trailing '/'
+                                {
+                                    i++;
+                                    continue;
+                                }
+                                hash = (hash ^ '/') * FNV_PRIME;
+                                while (i < _path.Length && _path[i] != '/')
+                                {
+                                    char c = _path[i++];
+                                    c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                    hash = (hash ^ c) * FNV_PRIME;
+                                }
+                            }
 
-                        if (FileLead.TryGetValue(hash, out var entry))
-                        {
-                            var headers = context.Response.Headers;
-                            for (int j = 0; j < defaultHeaderCount; j++)
-                                headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+                            if (FileLead.TryGetValue(hash, out var entry))
+                            {
+                                var headers = context.Response.Headers;
+                                for (int j = 0; j < defaultHeaderCount; j++)
+                                    headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
-                            if (entry.ContentTypeHeaders != null)
-                                for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
-                                    headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+                                if (entry.ContentTypeHeaders != null)
+                                    for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                        headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
 
-                            return entry.Handler(context, entry.FilePath);
-                        }
-                        context.Response.StatusCode = StatusCodes.Status404NotFound;
-                        if (ErrorDict.TryGetValue(hostValue, out var errHandler))
-                        {
-                            return errHandler(context);
-                        }
-                        return context.Response.WriteAsync(error404);
+                                return entry.Handler(context, entry.FilePath);
+                            }
+                            context.Response.StatusCode = StatusCodes.Status404NotFound;
+                            if (ErrorDict.TryGetValue(hostValue, out var errHandler))
+                            {
+                                return errHandler(context);
+                            }
+                            return context.Response.WriteAsync(error404);
 #pragma warning disable CS0162 // Unreachable code detected
-                        return next(context); // Need to be here to skip app.Use error.
+                            return next(context); // Need to be here to skip app.Use error.
 #pragma warning restore CS0162 // Unreachable code detected
-                    });
+                        });
                     Console.WriteLine("Using fast-response. Restart webserver if you turn on any optional features: LoopFindEndpoint, FilterFrom/FilterTo, Htaccess, UrlAlias, DomainAlias...");
                 }
                 else
