@@ -202,11 +202,39 @@ namespace WebServer
                     app.Use((context, next) =>
                     {
                         var hostValue = context.Request.Host.Value!;
-                        ReadOnlySpan<char> _host = hostValue.AsSpan();
+                        ReadOnlySpan<char> hostSpan = hostValue.AsSpan();
                         ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-                        var headers = context.Response.Headers;
-                        if (FileLead.TryGetValue(HashHostAndPath(hostValue, _path), out var entry))
+
+                        // HashHostAndPath(hostSpan, _path) -> does not remove last '/'
+                        // Hash domain:
+                        ulong hash = FNV_OFFSET;
+                        for (int k = 0; k < hostSpan.Length; k++)
                         {
+                            char c = hostSpan[k];
+                            c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                            hash = (hash ^ c) * FNV_PRIME;
+                        }
+                        // Hash path
+                        int i = 0;
+                        while (i < _path.Length)
+                        {
+                            if (_path[i] == '/') // prevent duplicate slashes // also skips trailing '/'
+                            {
+                                i++;
+                                continue;
+                            }
+                            hash = (hash ^ '/') * FNV_PRIME;
+                            while (i < _path.Length && _path[i] != '/')
+                            {
+                                char c = _path[i++];
+                                c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                hash = (hash ^ c) * FNV_PRIME;
+                            }
+                        }
+
+                        if (FileLead.TryGetValue(hash, out var entry))
+                        {
+                            var headers = context.Response.Headers;
                             for (int j = 0; j < defaultHeaderCount; j++)
                                 headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
