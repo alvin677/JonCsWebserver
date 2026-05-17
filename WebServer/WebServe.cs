@@ -218,7 +218,7 @@ namespace WebServer
                         int i = 0;
                         while (i < _path.Length)
                         {
-                            if (_path[i] == '/') // prevent duplicate slashes // also skips trailing '/'
+                            if (_path[i] == '/') // prevent duplicate slashes // skips trailing '/'
                             {
                                 i++;
                                 continue;
