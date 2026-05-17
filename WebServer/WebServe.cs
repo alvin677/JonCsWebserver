@@ -254,7 +254,7 @@ namespace WebServer
                         return next(context); // Need to be here to skip app.Use error.
 #pragma warning restore CS0162 // Unreachable code detected
                     });
-                    // Console.WriteLine("Using fast-response. Restart webserver if you turn on any optional features: LoopFindEndpoint, FilterFrom/FilterTo, Htaccess, UrlAlias, DomainAlias...");
+                    Console.WriteLine("Using fast-response. Restart webserver if you turn on any optional features: LoopFindEndpoint, FilterFrom/FilterTo, Htaccess, UrlAlias, DomainAlias...");
                 }
                 else
                 {
