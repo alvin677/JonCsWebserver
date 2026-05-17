@@ -855,7 +855,9 @@ namespace WebServer
                     await flushTask;
             }
         }
-
+        #endregion 
+        
+        #region HtaccessHelpers
         private static string ResolveTestString(string testString, HttpContext context) =>
             testString.ToUpperInvariant() switch
             {
