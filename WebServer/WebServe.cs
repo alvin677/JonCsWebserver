@@ -28,6 +28,8 @@ namespace WebServer
 {
     public class Startup
     {
+        const ulong FNV_OFFSET = 14695981039346656037UL;
+        const ulong FNV_PRIME = 1099511628211UL;
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 Page not found</title><link href=\"/main.css\" rel=\"stylesheet\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br/><img src=\"//jonhosting.com/JonHost.png\"/><br/><p>Please wait. Maybe we are working on loading or adding this page.</p>${0}<br/><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br/><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br/><sup><em>Did you know that you're old?</em></sup></body></html>";
         public static string WWWdir = "";
@@ -208,9 +210,6 @@ namespace WebServer
                     ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
                     // Build hash incrementally — no buffer, no slashPositions needed
-                    const ulong FNV_OFFSET = 14695981039346656037UL;
-                    const ulong FNV_PRIME = 1099511628211UL;
-
                     ulong hash = FNV_OFFSET;
 
                     // Hash host (already case-folded by StripPort/filter)
@@ -409,14 +408,14 @@ namespace WebServer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
-            ulong hash = 14695981039346656037UL; // FNV-1a offset basis
+            ulong hash = FNV_OFFSET; // FNV-1a offset basis
 
             for (int i = 0; i < host.Length; i++)
             {
                 char c = host[i];
                 // Branch-free ASCII lowercase: only OR 32 if 'A' <= c <= 'Z'
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
 
             for (int i = 0; i < path.Length; i++)
@@ -424,7 +423,7 @@ namespace WebServer
                 char c = path[i];
                 // If you want path to be case-sensitive, skip this line
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
 
             return hash;
@@ -437,7 +436,7 @@ namespace WebServer
                 char c = path[i];
                 // If you want path to be case-sensitive, skip this line
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
             return hash;
         }
@@ -1015,14 +1014,14 @@ namespace WebServer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashSpan(ReadOnlySpan<char> data)
         {
-            ulong hash = 14695981039346656037UL;
+            ulong hash = FNV_OFFSET;
             for (int i = 0; i < data.Length; i++)
             {
                 char c = data[i];
                 // Branch-free ASCII lowercase — valid for ASCII paths only
                 // Non-ASCII domain names would need UTF-8 encoding first
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
             return hash;
         }
