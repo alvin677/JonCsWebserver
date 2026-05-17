@@ -220,11 +220,14 @@ namespace WebServer
                         hash = (hash ^ c) * FNV_PRIME;
                     }
 
-                    int aliasIdx = DomainAliasLookup(hash); // Whether this is true may vary greatly on WebAdmin. Can be used for www.example.com -> example.com
-                    if (aliasIdx >= 0)
+                    if (DAliasMask != 0) // Moved here, saves one branch below on empty setups (performed inside func before)
                     {
-                        context.Request.Host = aliasHostStrings[aliasIdx];
-                        hash = domAliasToHash[aliasIdx];
+                        int aliasIdx = DomainAliasLookup(hash); // Whether this is true may vary greatly on WebAdmin. Can be used for www.example.com -> example.com
+                        if (aliasIdx >= 0)
+                        {
+                            context.Request.Host = aliasHostStrings[aliasIdx];
+                            hash = domAliasToHash[aliasIdx];
+                        }
                     }
 
                     // HashHostAndPath(hash, _path) -> uses already-hashed domain hash, a little in-between optimization (extremely rare HIT anyway in normal cases)
@@ -836,20 +839,18 @@ namespace WebServer
         private static ulong[] domAliasToHash = Array.Empty<ulong>();
         private static ulong[] domAliasFromHash = Array.Empty<ulong>();
         private static HostString[] aliasHostStrings = Array.Empty<HostString>();
-        private static ulong DAliasMask;
+        private static ulong DAliasMask = 0;
+        /// <summary>Caller guarantees DAliasMask != 0</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int DomainAliasLookup(ulong hash)
         {
-            if (domAliasFromHash.Length == 0) return -1;
             int idx = (int)(hash & DAliasMask);
             int start = idx;
             do
             {
-                ref var e = ref domAliasFromHash[idx];
-                if (e == hash)
-                    return idx;
-                if (e == 0)
-                    break;
+                ref ulong e = ref domAliasFromHash[idx];
+                if (e == hash) return idx;
+                if (e == 0) return -1;
                 idx = (int)(((uint)idx + 1) & DAliasMask);
             } while (idx != start);
             return -1;
