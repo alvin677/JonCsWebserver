@@ -220,7 +220,7 @@ namespace WebServer
                         hash = (hash ^ c) * FNV_PRIME;
                     }
 
-                    if (DAliasMask != 0) // Moved here, saves one branch below on empty setups (performed inside func before)
+                    if (DAliasMask != 0) // Saves one branch below on empty setups
                     {
                         int aliasIdx = DomainAliasLookup(hash); // Whether this is true may vary greatly on WebAdmin. Can be used for www.example.com -> example.com
                         if (aliasIdx >= 0)
@@ -230,7 +230,7 @@ namespace WebServer
                         }
                     }
 
-                    // HashHostAndPath(hash, _path) -> uses already-hashed domain hash, a little in-between optimization (extremely rare HIT anyway in normal cases)
+                    // HashHostAndPath(hash, _path) -> uses already-hashed domain hash, a little in-between optimization (disabled by default)
                     if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath))
                     {
                         context.Request.Path = new PathString(newPath); // needed for C#-endpoints
@@ -424,7 +424,7 @@ namespace WebServer
             for (int i = 0; i < path.Length; i++)
             {
                 char c = path[i];
-                // If you want path to be case-sensitive, skip this line
+                // Lowercase for case-insensitivity: 
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * FNV_PRIME;
             }
@@ -437,7 +437,7 @@ namespace WebServer
             for (int i = 0; i < path.Length; i++)
             {
                 char c = path[i];
-                // If you want path to be case-sensitive, skip this line
+                // Lowercase for case-insensitivity: (skip if case-sensitive)
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                 hash = (hash ^ c) * FNV_PRIME;
             }
