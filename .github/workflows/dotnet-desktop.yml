@@ -38,9 +38,10 @@ jobs:
           - rid: osx-arm64
             output_name: WebServer.osx-arm64
             output_name_lite: WebServer_lite.osx-arm64
-          - rid: android-arm64
+          - rid: android-arm64 # Android build not supported by ASpNetCore
             output_name: WebServer.android
             outout_name_lite: WebServer_lite.android
+# Windows 32-bit arm not buildable:
 #           - rid: win-arm
 #            output_name: WebServer_arm.exe
 #            output_name_lite: WebServer_lite_arm.exe
@@ -57,12 +58,16 @@ jobs:
     - name: Restore
       run: dotnet restore WebServer/WebServer.csproj
 
+    #
+    # NORMAL BUILD
+    #
     - name: Publish ${{ matrix.rid }}
       run: >
         dotnet publish WebServer/WebServer.csproj
         -c Release
         -r ${{ matrix.rid }}
         --self-contained true
+        -p:PublishSingleFile=true
         -o ./publish/${{ matrix.rid }}
 
     - name: Publish ${{ matrix.rid }} trimmed
@@ -71,8 +76,24 @@ jobs:
         -c Release
         -r ${{ matrix.rid }}
         --self-contained true
+        -p:PublishSingleFile=true
         -p:PublishTrimmed=true
         -o ./publish/${{ matrix.rid }}_lite
+
+    #
+    # ReadyToRun BUILD
+    #
+    - name: Publish ${{ matrix.rid }} ReadyToRun
+      run: >
+        dotnet publish WebServer/WebServer.csproj
+        -c Release
+        -r ${{ matrix.rid }}
+        --self-contained true
+        -p:PublishSingleFile=true
+        -p:PublishReadyToRun=true
+        -p:EnableCompressionInSingleFile=true
+        -p:InvariantGlobalization=true
+        -o ./publish/${{ matrix.rid }}_ReadyToRun
 
     - name: Rename outputs
       run: |
@@ -97,3 +118,30 @@ jobs:
       with:
         name: ${{ matrix.output_name_lite }}
         path: ./publish/${{ matrix.rid }}_lite/${{ matrix.output_name_lite }}
+
+  prerelease:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./release_files
+
+    - name: Flatten artifacts
+      shell: bash
+      run: |
+        mkdir ./final
+
+        find ./release_files -type f -exec cp {} ./final/ \;
+
+    - name: Create Pre-Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ github.run_number }}
+        prerelease: true
+        generate_release_notes: true
+        files: ./final/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
