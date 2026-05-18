@@ -28,6 +28,8 @@ namespace WebServer
 {
     public class Startup
     {
+        const ulong FNV_OFFSET = 14695981039346656037UL;
+        const ulong FNV_PRIME = 1099511628211UL;
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         const string error404 = "<!DOCTYPE HTML><html><head><title>Err 404 Page not found</title><link href=\"/main.css\" rel=\"stylesheet\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/></head><body><center><span style=\"font-size:24\">Error 404</span><h1 color=red>Page not found</h1><br/><img src=\"//jonhosting.com/JonHost.png\"/><br/><p>Please wait. Maybe we are working on loading or adding this page.</p>${0}<br/><div style=\"display:inline-table;\"><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=473863639347232779&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe><iframe style=\"margin:auto\" src=\"https://discordapp.com/widget?id=670549627455668245&theme=dark\" width=\"350\" height=\"500\" allowtransparency=\"true\" frameborder=\"0\"></iframe></div></center><br/><ul style=\"display:inline-block;float:right\"><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:0px;'><a href=\"https://twitter.com/JonTVme\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Twitter</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:--25px;'><a href=\"https://facebook.com/realJonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Facebook</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-50px'><a href=\"https://reddit.com/r/JonTV\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Reddit</a></li><li style='display:inline-block;background-image:url(\"/social-icons.png\");background-position:-75px'><a href=\"https://discord.gg/4APyyak\" style=\"display:block;text-indent:-9999px;width:25px;height:25px;\">Discord server</a></li></ul><br/><sup><em>Did you know that you're old?</em></sup></body></html>";
         public static string WWWdir = "";
@@ -189,106 +191,50 @@ namespace WebServer
                     endpoints.Map("/{**catchAll}", async context =>
                 */
                 // Manual Middleware should avoid overhead
-                app.Use((context, next) =>
+                if (
+!config.DomainFilterEnabled // No FilterFrom->FilterTo
+&& !config.LoopFindEndpoint // No LoopEndpoint usage
+&& !config.EnableHtaccess // no Htaccess usage
+&& DAliasMask == 0 // No DomainAlias usage
+&& config.UrlAliasHash.Count == 0 // No UrlAlias usage
+                    )
                 {
-#if DEBUG
-                try
-                {
-#endif
-                    var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
-                    if (config.DomainAlias.TryGetValue(hostValue, out string? OtherDomain)) // Whether this is true may vary greatly on WebAdmin, can be used for www.example.com -> example.com
-                    {
-                        context.Request.Host = new HostString(OtherDomain);
-                        hostValue = OtherDomain;
-                    }
-                    ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
-                    string? filteredHost = null;
-                    ReadOnlySpan<char> hostSpan;
-                    if (config.DomainFilterEnabled) // Optional domain filter
-                    {
-                        filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
-                        hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
-                    }
-                    else hostSpan = _host;
-                    ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-
-                    // Build hash incrementally — no buffer, no slashPositions needed
-                    const ulong FNV_OFFSET = 14695981039346656037UL;
-                    const ulong FNV_PRIME = 1099511628211UL;
-
-                    ulong hash = FNV_OFFSET;
-
-                    // Hash host (already case-folded by StripPort/filter)
-                    for (int k = 0; k < hostSpan.Length; k++)
-                    {
-                        char c = hostSpan[k];
-                        c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                        hash = (hash ^ c) * FNV_PRIME;
-                    }
-
-                    // ulong key = HashHostAndPath(hostSpan, _path); // skip string concat
-                    if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath)) // rarely true. Only if webadmin has added values // (hash, _path) -> use the hash that is already done.
-                    {
-                        context.Request.Path = new PathString(newPath); // needed for C#-endpoints
-                        _path = newPath.AsSpan(); // update the span used directly below
-                    }
-
-                    // Per-segment hash accumulation + snapshot after each segment
-                    Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
-                    int slashCount = 0;
-
-                    int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
-                    while (i < _path.Length)
-                    {
-                        if (_path[i] == '/') { i++; continue; }
-
-                        int segStart = i;
-                        while (i < _path.Length && _path[i] != '/') i++;
-
-                        ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
-
-                        if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
+                    app.Use((context, next) =>
                         {
-                            if (slashCount >= slashHashes.Length)
-                            {
-                                context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
-                                return Task.CompletedTask;
-                            }
+                            var hostValue = context.Request.Host.Value!;
+                            ReadOnlySpan<char> hostSpan = hostValue.AsSpan();
+                            ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                            // Snapshot hash before this segment (for fallback to parent directory)
-                            slashHashes[slashCount++] = hash;
-
-                            // Fold in '/' + segment chars
-                            hash = (hash ^ '/') * FNV_PRIME;
-                            for (int k = 0; k < segment.Length; k++)
+                            // HashHostAndPath(hostSpan, _path) -> does not remove last '/'
+                            // Hash domain:
+                            ulong hash = FNV_OFFSET;
+                            for (int k = 0; k < hostSpan.Length; k++)
                             {
-                                char c = segment[k];
+                                char c = hostSpan[k];
                                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                                 hash = (hash ^ c) * FNV_PRIME;
                             }
-                        }
-                        // no i++ — handled by leading check
-                    }
-
-                    // hash now represents the full path
-                    var headers = context.Response.Headers;
-                    if (FileLead.TryGetValue(hash, out var entry))
-                    {
-                        for (int j = 0; j < defaultHeaderCount; j++)
-                            headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
-
-                        if (entry.ContentTypeHeaders != null)
-                            for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
-                                headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
-
-                        return entry.Handler(context, entry.FilePath);
-                    }
-                    else if (config.LoopFindEndpoint)
-                    {
-                        for (int s = slashCount - 1; s >= 0; s--)
-                        {
-                            if (FileLead.TryGetValue(slashHashes[s], out entry))
+                            // Hash path
+                            int i = 0;
+                            while (i < _path.Length)
                             {
+                                if (_path[i] == '/') // prevent duplicate slashes // skips trailing '/'
+                                {
+                                    i++;
+                                    continue;
+                                }
+                                hash = (hash ^ '/') * FNV_PRIME;
+                                while (i < _path.Length && _path[i] != '/')
+                                {
+                                    char c = _path[i++];
+                                    c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                    hash = (hash ^ c) * FNV_PRIME;
+                                }
+                            }
+
+                            if (FileLead.TryGetValue(hash, out var entry))
+                            {
+                                var headers = context.Response.Headers;
                                 for (int j = 0; j < defaultHeaderCount; j++)
                                     headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
 
@@ -298,87 +244,212 @@ namespace WebServer
 
                                 return entry.Handler(context, entry.FilePath);
                             }
-                        }
-                    }
-
-                    // .htaccess support // Reuses hash, should have minimal overhead.
-                    if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
-                    {
-                        if (htRules.DenyAll)
-                        {
-                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                            return Task.CompletedTask;
-                        }
-
-                        string reqPath = context.Request.Path.Value ?? "/";
-
-                        foreach (var redirect in htRules.Redirects)
-                        {
-                            if (redirect.Pattern.IsMatch(reqPath))
+                            context.Response.StatusCode = StatusCodes.Status404NotFound;
+                            if (ErrorDict.TryGetValue(hostValue, out var errHandler))
                             {
-                                context.Response.StatusCode = redirect.StatusCode;
-                                headers.Location = redirect.Target;
+                                return errHandler(context);
+                            }
+                            return context.Response.WriteAsync(error404);
+#pragma warning disable CS0162 // Unreachable code detected
+                            return next(context); // Need to be here to skip app.Use error.
+#pragma warning restore CS0162 // Unreachable code detected
+                        });
+                    Console.WriteLine("Using fast-response. Restart webserver if you turn on any optional features: LoopFindEndpoint, FilterFrom/FilterTo, Htaccess, UrlAlias, DomainAlias...");
+                }
+                else
+                {
+                    app.Use((context, next) =>
+                    {
+#if DEBUG
+                try
+                {
+#endif
+                        var hostValue = context.Request.Host.Value!; // while .Host is nullable, it is always set in this case. Checking for .HasValue would probably waste a CPU cycle.
+                        ReadOnlySpan<char> _host = StripPort(hostValue.AsSpan()); // example.com:8080 -> example.com
+                        string? filteredHost = null;
+                        ReadOnlySpan<char> hostSpan;
+                        if (config.DomainFilterEnabled) // Optional domain filter
+                        {
+                            filteredHost = _host.ToString().Replace(config.FilterFromDomain, config.DomainFilterTo); // Store into a string to prevent GC issues.
+                            hostSpan = filteredHost.AsSpan(); // hostSpan example.com -> examplecom (example)
+                        }
+                        else hostSpan = _host;
+                        ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
+
+                        // Build hash incrementally — no buffer, no slashPositions needed
+                        ulong hash = FNV_OFFSET;
+
+                        // Hash host (already case-folded by StripPort/filter)
+                        for (int k = 0; k < hostSpan.Length; k++)
+                        {
+                            char c = hostSpan[k];
+                            c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                            hash = (hash ^ c) * FNV_PRIME;
+                        }
+
+                        if (DAliasMask != 0) // Saves one branch below on empty setups
+                        {
+                            int aliasIdx = DomainAliasLookup(hash); // Whether this is true may vary greatly on WebAdmin. Can be used for www.example.com -> example.com
+                            if (aliasIdx >= 0)
+                            {
+                                context.Request.Host = aliasHostStrings[aliasIdx];
+                                hash = domAliasToHash[aliasIdx];
+                            }
+                        }
+
+                        // HashHostAndPath(hash, _path) -> uses already-hashed domain hash, a little in-between optimization (disabled by default)
+                        if (config.UrlAliasHash.Count != 0 && config.UrlAliasHash.TryGetValue(HashHostAndPath(hash, _path), out string? newPath))
+                        {
+                            context.Request.Path = new PathString(newPath); // needed for C#-endpoints
+                            _path = newPath.AsSpan(); // update the span used directly below
+                        }
+
+                        // Per-segment hash accumulation + snapshot after each segment
+                        Span<ulong> slashHashes = stackalloc ulong[config.MaxDirDepth + 4];
+                        int slashCount = 0;
+                        int i = _path.Length > 0 && _path[0] == '/' ? 1 : 0;
+                        while (i < _path.Length)
+                        {
+                            if (_path[i] == '/') { i++; continue; }
+                            int segStart = i;
+                            while (i < _path.Length && _path[i] != '/') i++;
+
+                            ReadOnlySpan<char> segment = _path.Slice(segStart, i - segStart);
+
+                            if (segment.Length != 2 || segment[0] != '.' || segment[1] != '.')
+                            {
+                                if (slashCount >= slashHashes.Length)
+                                {
+                                    context.Response.StatusCode = StatusCodes.Status414RequestUriTooLong;
+                                    return Task.CompletedTask;
+                                }
+                                // Snapshot hash before this segment (for fallback to parent directory)
+                                slashHashes[slashCount++] = hash;
+
+                                // Fold in '/' + segment chars
+                                hash = (hash ^ '/') * FNV_PRIME;
+                                for (int k = 0; k < segment.Length; k++)
+                                {
+                                    char c = segment[k];
+                                    c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
+                                    hash = (hash ^ c) * FNV_PRIME;
+                                }
+                            }
+                            // no i++ — handled by leading check
+                        }
+
+                        // hash now represents the full path
+                        var headers = context.Response.Headers;
+                        if (FileLead.TryGetValue(hash, out var entry))
+                        {
+                            for (int j = 0; j < defaultHeaderCount; j++)
+                                headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+
+                            if (entry.ContentTypeHeaders != null)
+                                for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                    headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+
+                            return entry.Handler(context, entry.FilePath);
+                        }
+                        else if (config.LoopFindEndpoint)
+                        {
+                            for (int s = slashCount - 1; s >= 0; s--)
+                            {
+                                if (FileLead.TryGetValue(slashHashes[s], out entry))
+                                {
+                                    for (int j = 0; j < defaultHeaderCount; j++)
+                                        headers[defaultHeaderKeys[j]] = defaultHeaderValues[j];
+
+                                    if (entry.ContentTypeHeaders != null)
+                                        for (int j = 0; j < entry.ContentTypeHeaders.Length; j += 2)
+                                            headers[entry.ContentTypeHeaders[j]] = entry.ContentTypeHeaders[j + 1];
+
+                                    return entry.Handler(context, entry.FilePath);
+                                }
+                            }
+                        }
+
+                        // .htaccess support // Reuses hash, should have minimal overhead.
+                        if (config.EnableHtaccess && HtaccessMap.TryGetValue(slashHashes[slashCount > 0 ? slashCount - 1 : 0], out var htRules))
+                        {
+                            if (htRules.DenyAll)
+                            {
+                                context.Response.StatusCode = StatusCodes.Status403Forbidden;
                                 return Task.CompletedTask;
                             }
+
+                            string reqPath = context.Request.Path.Value ?? "/";
+
+                            foreach (var redirect in htRules.Redirects)
+                            {
+                                if (redirect.Pattern.IsMatch(reqPath))
+                                {
+                                    context.Response.StatusCode = redirect.StatusCode;
+                                    headers.Location = redirect.Target;
+                                    return Task.CompletedTask;
+                                }
+                            }
+
+                            foreach (var rewrite in htRules.Rewrites)
+                            {
+                                // Evaluate conditions
+                                bool condsPass = true;
+                                foreach (var cond in rewrite.Conditions)
+                                {
+                                    string testVal = ResolveTestString(cond.TestString, context);
+                                    bool matched;
+
+                                    if (cond.IsFileExists)
+                                        matched = File.Exists(testVal);
+                                    else if (cond.IsDirExists)
+                                        matched = Directory.Exists(testVal);
+                                    else if (cond.IsFileSymlink)
+                                        matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
+                                    else
+                                        matched = cond.Pattern?.IsMatch(testVal) ?? false;
+
+                                    if (cond.Negate) matched = !matched;
+                                    if (!matched) { condsPass = false; break; }
+                                }
+                                if (!condsPass) continue;
+
+                                var match = rewrite.Pattern.Match(reqPath);
+                                if (!match.Success) continue;
+
+                                string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
+
+                                if (rewrite.IsRedirect)
+                                {
+                                    context.Response.StatusCode = rewrite.RedirectCode;
+                                    headers.Location = rewPath;
+                                    return Task.CompletedTask;
+                                }
+
+                                // Internal rewrite — update path and re-lookup
+                                context.Request.Path = new PathString(rewPath);
+                                if (rewrite.IsLast) break;
+                            }
+
+                            foreach (var (key, value) in htRules.Headers)
+                                headers[key] = value;
                         }
 
-                        foreach (var rewrite in htRules.Rewrites)
+                        context.Response.StatusCode = StatusCodes.Status404NotFound;
+                        if (ErrorDict.TryGetValue(hostValue, out var errHandler))
                         {
-                            // Evaluate conditions
-                            bool condsPass = true;
-                            foreach (var cond in rewrite.Conditions)
-                            {
-                                string testVal = ResolveTestString(cond.TestString, context);
-                                bool matched;
-
-                                if (cond.IsFileExists)
-                                    matched = File.Exists(testVal);
-                                else if (cond.IsDirExists)
-                                    matched = Directory.Exists(testVal);
-                                else if (cond.IsFileSymlink)
-                                    matched = (File.GetAttributes(testVal) & FileAttributes.ReparsePoint) != 0;
-                                else
-                                    matched = cond.Pattern?.IsMatch(testVal) ?? false;
-
-                                if (cond.Negate) matched = !matched;
-                                if (!matched) { condsPass = false; break; }
-                            }
-                            if (!condsPass) continue;
-
-                            var match = rewrite.Pattern.Match(reqPath);
-                            if (!match.Success) continue;
-
-                            string rewPath = rewrite.Pattern.Replace(reqPath, rewrite.Replacement);
-
-                            if (rewrite.IsRedirect)
-                            {
-                                context.Response.StatusCode = rewrite.RedirectCode;
-                                headers.Location = rewPath;
-                                return Task.CompletedTask;
-                            }
-
-                            // Internal rewrite — update path and re-lookup
-                            context.Request.Path = new PathString(rewPath);
-                            if (rewrite.IsLast) break;
+                            return errHandler(context);
                         }
-
-                        foreach (var (key, value) in htRules.Headers)
-                            headers[key] = value;
-                    }
-
-                    context.Response.StatusCode = StatusCodes.Status404NotFound;
-                    if (ErrorDict.TryGetValue(hostValue, out var errHandler))
-                    {
-                        return errHandler(context);
-                    }
-                    return context.Response.WriteAsync(error404);
-                    return next(context); // Need to be here to skip app.Use error.
+                        return context.Response.WriteAsync(error404);
+#pragma warning disable CS0162 // Unreachable code detected
+                        return next(context); // Need to be here to skip app.Use error.
+#pragma warning restore CS0162 // Unreachable code detected
 #if DEBUG
                     } catch(Exception e){
                     Console.WriteLine(e);
                     }
 #endif
-                });
+                    });
+                }
 
                 Reload();
                 Task.Run(() =>
@@ -410,22 +481,22 @@ namespace WebServer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashHostAndPath(ReadOnlySpan<char> host, ReadOnlySpan<char> path)
         {
-            ulong hash = 14695981039346656037UL; // FNV-1a offset basis
+            ulong hash = FNV_OFFSET; // FNV-1a offset basis
 
             for (int i = 0; i < host.Length; i++)
             {
                 char c = host[i];
                 // Branch-free ASCII lowercase: only OR 32 if 'A' <= c <= 'Z'
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
 
             for (int i = 0; i < path.Length; i++)
             {
                 char c = path[i];
-                // If you want path to be case-sensitive, skip this line
+                // Lowercase for case-insensitivity: 
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
 
             return hash;
@@ -436,9 +507,9 @@ namespace WebServer
             for (int i = 0; i < path.Length; i++)
             {
                 char c = path[i];
-                // If you want path to be case-sensitive, skip this line
+                // Lowercase for case-insensitivity: (skip if case-sensitive)
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
             return hash;
         }
@@ -812,7 +883,9 @@ namespace WebServer
                     await flushTask;
             }
         }
-
+        #endregion 
+        
+        #region HtaccessHelpers
         private static string ResolveTestString(string testString, HttpContext context) =>
             testString.ToUpperInvariant() switch
             {
@@ -834,6 +907,36 @@ namespace WebServer
         #endregion
 
         #region Config
+        private static ulong[] domAliasToHash = Array.Empty<ulong>();
+        private static ulong[] domAliasFromHash = Array.Empty<ulong>();
+        private static HostString[] aliasHostStrings = Array.Empty<HostString>();
+        private static ulong DAliasMask = 0;
+        /// <summary>Caller guarantees DAliasMask != 0</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int DomainAliasLookup(ulong hash)
+        {
+            int idx = (int)(hash & DAliasMask);
+            int start = idx;
+            do
+            {
+                ref ulong e = ref domAliasFromHash[idx];
+                if (e == hash) return idx;
+                if (e == 0) return -1;
+                idx = (int)(((uint)idx + 1) & DAliasMask);
+            } while (idx != start);
+            return -1;
+        }
+        static int NextPowerOfTwo(int v)
+        {
+            v--;
+            v |= v >> 1;
+            v |= v >> 2;
+            v |= v >> 4;
+            v |= v >> 8;
+            v |= v >> 16;
+            return v + 1;
+        }
+
         public static void Reload()
         {
             defaultHeaderKeys = new string[config.DefaultHeaders.Count];
@@ -901,6 +1004,48 @@ namespace WebServer
             string depsPath = Path.Combine(executableDir, "deps");
             Console.WriteLine("Need references for ._cs files? Add referenced libraries (.dll) to " + depsPath);
             ReloadBackendDir(config.BackendDir);
+
+            if (config.DomainAlias.Count == 0)
+            {
+                domAliasFromHash = Array.Empty<ulong>();
+                domAliasToHash = Array.Empty<ulong>();
+                aliasHostStrings = Array.Empty<HostString>();
+                DAliasMask = 0;
+            }
+            else
+            {
+                int size = NextPowerOfTwo(config.DomainAlias.Count * 2);
+                ulong newMask = (ulong)size - 1;
+                var newFromHash = new ulong[size];
+                var newToHash = new ulong[size];
+                var newHostStrings = new HostString[size];
+                foreach (var domAlias in config.DomainAlias)
+                {
+                    ReadOnlySpan<char> FromDom_NoPort = StripPort(domAlias.Key.AsSpan()); // avoid configuration mistakes / remains "compatible" with old configurations
+                    var FromDom = FromDom_NoPort.ToString();
+                    var ToDom = domAlias.Value;
+                    if (config.DomainFilterEnabled)
+                    {
+                        FromDom = FromDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
+                        ToDom = ToDom.Replace(config.FilterFromDomain, config.DomainFilterTo);
+                    }
+                    ulong fromHash = HashSpan(FromDom);
+                    if (fromHash == 0)
+                    {
+                        Console.WriteLine("[WARN] DomainAlias Hash=0 on " + FromDom);
+                    }
+                    int indx = (int)(fromHash & newMask);
+                    while (newFromHash[indx] != 0)
+                        indx = (int)(((uint)indx + 1) & newMask);
+                    newFromHash[indx] = fromHash;
+                    newToHash[indx] = HashSpan(ToDom);
+                    newHostStrings[indx] = new HostString(ToDom);
+                }
+                DAliasMask = newMask;
+                domAliasFromHash = newFromHash;
+                domAliasToHash = newToHash;
+                aliasHostStrings = newHostStrings;
+            }
         }
         public static void ReloadBackendDir(string newBackendDir)
         {
@@ -941,14 +1086,14 @@ namespace WebServer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong HashSpan(ReadOnlySpan<char> data)
         {
-            ulong hash = 14695981039346656037UL;
+            ulong hash = FNV_OFFSET;
             for (int i = 0; i < data.Length; i++)
             {
                 char c = data[i];
                 // Branch-free ASCII lowercase — valid for ASCII paths only
                 // Non-ASCII domain names would need UTF-8 encoding first
                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
-                hash = (hash ^ c) * 1099511628211UL;
+                hash = (hash ^ c) * FNV_PRIME;
             }
             return hash;
         }
@@ -1554,7 +1699,7 @@ namespace WebServer
 
             // Create a delegate for the method (this assumes it's compatible)
             Func<HttpContext, string, Task> phpFunction = (Func<HttpContext, string, Task>)Delegate.CreateDelegate(
-                typeof(Func<HttpContext, string, Task>), method
+                typeof(Func<HttpContext, string, Task>), method!
             );
 
             AddToFileLead(filePath, phpFunction);
