@@ -204,7 +204,6 @@ namespace WebServer
                             var hostValue = context.Request.Host.Value!;
                             ReadOnlySpan<char> hostSpan = hostValue.AsSpan(); // alt: StripPort(hostValue.AsSpan());
                             ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
-
                             // Hash domain:
                             ulong hash = FNV_OFFSET;
                             for (int k = 0; k < hostSpan.Length; k++)
@@ -230,7 +229,7 @@ namespace WebServer
                                     hash = (hash ^ c) * FNV_PRIME;
                                 }
                             }
-
+                            // Fetch
                             if (FileLead.TryGetValue(hash, out var entry))
                             {
                                 var headers = context.Response.Headers;
