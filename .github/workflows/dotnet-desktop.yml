@@ -116,7 +116,7 @@ jobs:
         # ReadyToRun
         src_exe="./publish/${{ matrix.rid }}_ReadyToRun/WebServer"
         [ -f "${src_exe}_ReadyToRun.exe" ] && src_exe="${src_exe}_ReadyToRun.exe"
-        mv "$src_exe" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name }}_ReadyToRun" || true
+        mv "$src_exe" "./publish/${{ matrix.rid }}_ReadyToRun/${{ matrix.output_name }}_ReadyToRun" || true
 
     - name: Upload ${{ matrix.rid }}
       uses: actions/upload-artifact@v4
@@ -134,7 +134,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.output_name }}_ReadyToRun
-        path: ./publish/${{ matrix.rid }}/${{ matrix.output_name }}_ReadyToRun
+        path: ./publish/${{ matrix.rid }}_ReadyToRun/${{ matrix.output_name }}_ReadyToRun
 
   prerelease:
     needs: build
