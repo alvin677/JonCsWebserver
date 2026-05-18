@@ -604,7 +604,7 @@ namespace WebServer
         private static HttpClientHandler handler = new HttpClientHandler {
             UseCookies = false
         };
-        private static readonly HttpClient httpClient = new HttpClient(handler);
+        public static readonly HttpClient httpClient = new HttpClient(handler);
         private static TimeSpan WSTimeout = TimeSpan.FromSeconds(config.WebSocketEndpointTimeout); // Updated in Reload()
         public static TimeSpan FCGI_QueueTimeout;
         private static bool IgnoreCert(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
@@ -781,6 +781,7 @@ namespace WebServer
                 return;
             }
         }
+
         /// <summary>user (client), proxyClient (endpoint)</summary>
         public static Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
