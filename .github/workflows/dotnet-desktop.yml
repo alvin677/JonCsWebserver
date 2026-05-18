@@ -115,7 +115,7 @@ jobs:
 
         # ReadyToRun
         src_lite="./publish/${{ matrix.rid }}_ReadyToRun/WebServer"
-        [ -f "${src_exe}.exe" ] && src_exe="${src_exe}_ReadyToRun.exe"
+        [ -f "${src_exe}_ReadyToRun.exe" ] && src_exe="${src_exe}_ReadyToRun.exe"
         mv "$src_lite" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name }}_ReadyToRun" || true
 
     - name: Upload ${{ matrix.rid }}
