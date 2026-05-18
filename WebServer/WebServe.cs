@@ -781,7 +781,6 @@ namespace WebServer
                 return;
             }
         }
-
         /// <summary>user (client), proxyClient (endpoint)</summary>
         public static Task PipeSockets(WebSocket webSocket, ClientWebSocket clientWebSocket)
         {
