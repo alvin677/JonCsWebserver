@@ -82,6 +82,8 @@ jobs:
         --self-contained true
         -p:PublishSingleFile=true
         -p:PublishTrimmed=true
+        -p:EnableCompressionInSingleFile=true
+        -p:InvariantGlobalization=true
         -o ./publish/${{ matrix.rid }}_lite
 
     #
@@ -111,6 +113,11 @@ jobs:
         [ -f "${src_lite}.exe" ] && src_lite="${src_lite}.exe"
         mv "$src_lite" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name_lite }}" || true
 
+        # ReadyToRun
+        src_lite="./publish/${{ matrix.rid }}_ReadyToRun/WebServer"
+        [ -f "${src_exe}.exe" ] && src_exe="${src_exe}_ReadyToRun.exe"
+        mv "$src_lite" "./publish/${{ matrix.rid }}_lite/${{ matrix.output_name }}_ReadyToRun" || true
+
     - name: Upload ${{ matrix.rid }}
       uses: actions/upload-artifact@v4
       with:
@@ -122,6 +129,12 @@ jobs:
       with:
         name: ${{ matrix.output_name_lite }}
         path: ./publish/${{ matrix.rid }}_lite/${{ matrix.output_name_lite }}
+
+    - name: Upload ${{ matrix.rid }} ReadyToRun
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.output_name }}_ReadyToRun
+        path: ./publish/${{ matrix.rid }}/${{ matrix.output_name }}_ReadyToRun
 
   prerelease:
     needs: build
