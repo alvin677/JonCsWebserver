@@ -202,10 +202,9 @@ namespace WebServer
                     app.Use((context, next) =>
                         {
                             var hostValue = context.Request.Host.Value!;
-                            ReadOnlySpan<char> hostSpan = hostValue.AsSpan();
+                            ReadOnlySpan<char> hostSpan = hostValue.AsSpan(); // alt: StripPort(hostValue.AsSpan());
                             ReadOnlySpan<char> _path = context.Request.Path.Value.AsSpan();
 
-                            // HashHostAndPath(hostSpan, _path) -> does not remove last '/'
                             // Hash domain:
                             ulong hash = FNV_OFFSET;
                             for (int k = 0; k < hostSpan.Length; k++)
@@ -214,7 +213,7 @@ namespace WebServer
                                 c |= (char)((uint)(c - 'A') <= 25 ? 32 : 0);
                                 hash = (hash ^ c) * FNV_PRIME;
                             }
-                            // Hash path
+                            // Hash path (trim slashes where needed)
                             int i = 0;
                             while (i < _path.Length)
                             {
