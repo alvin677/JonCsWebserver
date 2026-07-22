@@ -5,6 +5,8 @@ Feel free to fork, modify the code and send push requests to make it more perfor
 
 Try it out live: https://api.jonhosting.com
 
+[![Github All Releases](https://img.shields.io/github/downloads/alvin677/JonCsWebServer/total?label=Github%20Downloads)](https://github.com/alvin677/JonCsWebserver/releases)
+
 Launch:
 
 `./WebServer_linux --httpPort=80 --httpsPort=443 --backend=/var/www/dynamic_files --help`<br/>
