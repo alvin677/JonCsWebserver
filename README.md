@@ -577,25 +577,25 @@ HTTPS
 Requests/sec: 393466.78
 Transfer/sec:    121.02MB
 ```
-HTTP Serving 11.5KB html file (~170K req/s with Nginx with workers set to amount of cores)
+HTTP Serving 11.5-12KB html file (~170K req/s with Nginx with workers set to amount of cores)
 ```bash
   13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     4.27ms    3.17ms  62.28ms   80.17%
-    Req/Sec    19.07k     2.10k   44.66k    77.63%
-  3692692 requests in 15.10s, 42.13GB read
-Requests/sec: 244550.53
-Transfer/sec:      2.79GB
+    Latency     3.94ms    2.81ms  49.72ms   81.47%
+    Req/Sec    20.30k     1.65k   34.56k    72.45%
+  3947173 requests in 15.09s, 44.87GB read
+Requests/sec: 261543.56
+Transfer/sec:      2.97GB
 ```
-HTTPS Serving 11.5KB html file
+HTTPS Serving 11.5-12KB html file
 ```bash
   13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    11.74ms   39.53ms 634.41ms   97.48%
-    Req/Sec    13.07k     2.63k   18.25k    92.04%
-  2471917 requests in 15.09s, 28.21GB read
-Requests/sec: 163807.69
-Transfer/sec:      1.87GB
+    Latency     6.57ms   14.30ms 482.12ms   98.57%
+    Req/Sec    14.43k     2.19k   19.64k    89.02%
+  2751776 requests in 15.10s, 31.36GB read
+Requests/sec: 182255.80
+Transfer/sec:      2.08GB
 ```
 HTTP Serving PHP
 ```bash
@@ -634,26 +634,26 @@ Transfer/sec:    245.27MB
 Requests/sec:  72701.71
 Transfer/sec:     21.84MB
 ```
-Serving 15KB html file:
+Serving 15-16KB html file:
 ```
-jon@debian:~/$ nice -n 19 wrk -t 13 -c 1050 -d 10s http://music.jonhosting.com/
-Running 10s test @ http://music.jonhosting.com/
+jon@debian:~/Downloads$ wrk -t 13 -c 1050 -d 15s http://music.jonhosting.com
+Running 15s test @ http://music.jonhosting.com
   13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     4.26ms    3.18ms  42.96ms   82.06%
-    Req/Sec    19.33k     1.56k   34.97k    74.08%
-  2506718 requests in 10.10s, 35.68GB read
-Requests/sec: 248193.86
-Transfer/sec:      3.53GB
-jon@debian:~/$ nice -n 19 wrk -t 12 -c 1050 -d 10s https://music.jonhosting.com/
-Running 10s test @ https://music.jonhosting.com/
-  12 threads and 1050 connections
+    Latency     4.08ms    2.94ms  46.64ms   83.29%
+    Req/Sec    19.76k     1.74k   34.96k    77.50%
+  3847599 requests in 15.09s, 58.17GB read
+Requests/sec: 254952.63
+Transfer/sec:      3.85GB
+jon@debian:~/Downloads$ wrk -t 13 -c 1050 -d 15s https://music.jonhosting.com
+Running 15s test @ https://music.jonhosting.com
+  13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     9.41ms   17.70ms 389.96ms   96.58%
-    Req/Sec    12.46k     2.97k   16.89k    91.90%
-  1470810 requests in 10.10s, 20.94GB read
-Requests/sec: 145623.76
-Transfer/sec:      2.07GB
+    Latency     6.12ms    5.55ms 206.83ms   93.23%
+    Req/Sec    13.51k     1.94k   17.47k    88.82%
+  2600087 requests in 15.08s, 39.39GB read
+Requests/sec: 172427.74
+Transfer/sec:      2.61GB
 ```
 How does it handle mixed workloads running at the same time?
 ```bash
