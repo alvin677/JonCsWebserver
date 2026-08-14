@@ -550,15 +550,15 @@ running (0m30.0s), 0000/2800 VUs, 2495642 complete and 0 interrupted iterations
   All benchmarks for this one were done with wrk and webserver running on the same system.
   Roughly 2000% CPU utilization (2x CPUs = 28 cores) (~500% wrk usage)
   
-  HTTP
+  HTTP (with "heavy" features toggled on)
   ```bash
   13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     1.49ms    1.73ms  39.91ms   92.93%
-    Req/Sec    54.54k     3.66k   63.21k    85.44%
-  10583469 requests in 15.08s, 2.46GB read
-Requests/sec: 701933.31
-Transfer/sec:    167.35MB
+    Latency     1.38ms    1.48ms  36.09ms   92.37%
+    Req/Sec    55.43k     3.42k   68.94k    88.56%
+  10755625 requests in 15.08s, 2.92GB read
+Requests/sec: 713061.78
+Transfer/sec:    198.57MB
   12 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency     1.39ms    1.31ms  45.49ms   91.38%
@@ -571,13 +571,13 @@ HTTPS
 ```
   12 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     8.89ms   54.04ms   1.04s    98.33%
-    Req/Sec    28.76k     4.56k   37.73k    92.40%
-  9983873 requests in 30.08s, 2.32GB read
-Requests/sec: 331865.18
-Transfer/sec:     79.13MB
+    Latency     2.69ms    6.42ms 219.62ms   98.47%
+    Req/Sec    33.54k     3.71k   41.12k    88.57%
+  5935773 requests in 15.09s, 1.78GB read
+Requests/sec: 393466.78
+Transfer/sec:    121.02MB
 ```
-HTTP Serving 11.5KB html file
+HTTP Serving 11.5KB html file (~170K req/s with Nginx with workers set to amount of cores)
 ```bash
   13 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
