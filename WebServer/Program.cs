@@ -37,7 +37,8 @@ public class Program
         Startup.BackendDir = BackendDir ?? Startup.config.BackendDir;
         bool TestSess = args.FirstOrDefault(arg => arg.StartsWith("--testSess")) != null;
         bool HelpCmd = args.FirstOrDefault(arg => arg.StartsWith("--help")) != null;
-        if(HelpCmd)
+        bool ImmediateClose = args.FirstOrDefault(arg => arg.StartsWith("--exit")) != null;
+        if (HelpCmd)
         {
             Console.WriteLine("--help | Lists commands.\n" +
                 "--certPath=/etc/letsencrypt/live/ | Specify folder with folders of certificates. In your folder there should be folders named domain.org-0001, which should contain privkey.pem and fullchain.pem.\n" +
@@ -194,8 +195,11 @@ public class Program
         Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed.");
         StartMetricsTimer();
         web.Run();
-        Console.WriteLine("Press enter to exit..");
-        Console.ReadLine();
+        if (!ImmediateClose)
+        {
+            Console.WriteLine("Press enter to exit..");
+            Console.ReadLine();
+        }
     }
     public static void GetCPUUsage()
     {
