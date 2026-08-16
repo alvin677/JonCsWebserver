@@ -1410,12 +1410,14 @@ namespace WebServer
                     }
 
                     IndexDirectory(newPath); // Hotfix. Missed in toMove, likely from missing / at the end.
+                    /*
                     // Full re-index of renamed directory // Just ensures everything is correct, likely not needed
                     Task.Run(() =>
                     {
                         IndexFiles(newPath);
                         IndexDirectories(newPath);
                     });
+                    */
                 }
                 else
                 {
