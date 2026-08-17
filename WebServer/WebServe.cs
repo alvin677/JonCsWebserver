@@ -1206,6 +1206,13 @@ namespace WebServer
                 IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
             }
         }
+        public static void IndexDirectoriesOnce(string rootDirectory)
+        {
+            foreach (string Folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
+            {
+                IndexDirectory(Folder.Replace(Path.DirectorySeparatorChar, '/'));
+            }
+        }
         public static void IndexDirectory(string Folder)
         {
             if (Folder.Length <= BackendDir.Length) return; // guard against malformed paths

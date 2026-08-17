@@ -111,6 +111,13 @@ public class Program
                             Console.WriteLine("Indexing " + indx);
                             break;
                         }
+                    case "indexonedir":
+                        {
+                            string indx = Startup.BackendDir + String.Join(' ', Args.Skip(1)).TrimStart('/');
+                            Startup.IndexDirectoriesOnce(indx);
+                            Console.WriteLine("Indexed 1-level of directories on " + indx);
+                            break;
+                        }
                     case "loadcerts":
                         {
                             LoadCerts(certPath);
