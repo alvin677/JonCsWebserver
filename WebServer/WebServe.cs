@@ -141,7 +141,6 @@ namespace WebServer
         #region RequestHandler
         public void Configure(IApplicationBuilder app)
         {
-            Reload();
             if (WWWdir != "")
             {
                 app.UseStaticFiles(new StaticFileOptions
@@ -184,6 +183,7 @@ namespace WebServer
             {
                 if (!BackendDir.EndsWith('/')) // need to perform the check here for the check above to be valid
                     BackendDir += '/'; // avoid per-req addition
+                Reload();
                 app.UseWebSockets();
                 /*
                 app.UseRouting();
