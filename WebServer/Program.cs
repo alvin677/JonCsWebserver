@@ -64,7 +64,7 @@ public class Program
                 {
                     case "help":
                         {
-                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles [subpath]\nloadcerts\nclearcerts\nlistcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
+                            Console.WriteLine("Commands:\nhelp\nlistfiles [Optional search]\ncountfiles [Optional search]\nindexfiles [subpath]\nindexonedir [subpath]\nloadcerts\nclearcerts\nlistcerts\nstats (RAM and CPU usage)\ngc (manually trigger garbage collector)");
                             break;
                         }
                     case "listfiles":
