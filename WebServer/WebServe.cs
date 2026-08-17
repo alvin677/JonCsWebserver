@@ -141,6 +141,7 @@ namespace WebServer
         #region RequestHandler
         public void Configure(IApplicationBuilder app)
         {
+            Reload();
             if (WWWdir != "")
             {
                 app.UseStaticFiles(new StaticFileOptions
@@ -449,7 +450,6 @@ namespace WebServer
                     });
                 }
 
-                Reload();
                 Task.Run(() =>
                 {
                     IndexFiles(BackendDir);
