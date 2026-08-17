@@ -13,6 +13,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.IO.Enumeration;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
@@ -452,8 +453,11 @@ namespace WebServer
 
                 Task.Run(() =>
                 {
+                    IndexTree(BackendDir);
+                    /*
                     IndexFiles(BackendDir);
                     IndexDirectories(BackendDir);
+                    */
                     IndexErrorPages(BackendDir);
                 });
                 SetupFileWatcher(BackendDir);
@@ -1072,8 +1076,11 @@ namespace WebServer
                     SetupFileWatcher(BackendDir);
 
                     // 3. Rebuild file index
+                    IndexTree(BackendDir);
+                    /*
                     IndexFiles(BackendDir);
                     IndexDirectories(BackendDir);
+                    */
                     IndexErrorPages(BackendDir);
                 }
             }
@@ -1102,7 +1109,11 @@ namespace WebServer
 
             Parallel.ForEach(partitioner, paralleloptions, file =>
             {
-                IndexFile(file.Replace(Path.DirectorySeparatorChar, '/'));
+                IndexFile(file
+#if WINDOWS_PATH
+                    .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                    );
             });
         }
         public static void IndexFile(string file)
@@ -1183,7 +1194,11 @@ namespace WebServer
                 {
                     target = Path.Combine(fileInfo.DirectoryName ?? "", target); // Resolve relative to the symlink's directory
                 }
-                target = Path.GetFullPath(target).Replace(Path.DirectorySeparatorChar, '/');
+                target = Path.GetFullPath(target)
+#if WINDOWS_PATH
+                    .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                    ;
                 if(Symlinks.Contains(target))
                 {
                     Console.WriteLine("[WARN] Infinite symlink loop detected for file: " + file);
@@ -1192,7 +1207,11 @@ namespace WebServer
                 Symlinks.Add(target);
                 fileInfo = new FileInfo(target);
             }
-            string realFile = fileInfo.FullName.Replace(Path.DirectorySeparatorChar, '/');
+            string realFile = fileInfo.FullName
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
             if (realFile.StartsWith(BackendDir))
             {
                 realFile = realFile.Substring(BackendDir.Length); // Resolve relative to the symlink's directory
@@ -1222,7 +1241,11 @@ namespace WebServer
 
             foreach (string file in config.indexPriority)
             {
-                string tmpfile = Path.Combine(Folder, file).Replace(Path.DirectorySeparatorChar, '/');
+                string tmpfile = Path.Combine(Folder, file)
+#if WINDOWS_PATH
+                    .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                    ;
                 ulong tmpHash = HashSpan(tmpfile.AsSpan(BackendDir.Length));
 
                 if (FileLead.TryGetValue(tmpHash, out var existingEntry))
@@ -1238,7 +1261,11 @@ namespace WebServer
 
             if (config.EnableHtaccess)
             {
-                string htaccessPath = Path.Combine(Folder, ".htaccess").Replace(Path.DirectorySeparatorChar, '/');
+                string htaccessPath = Path.Combine(Folder, ".htaccess")
+#if WINDOWS_PATH
+                    .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                    ;
                 HtaccessRules? htaccess = HtaccessParser.Parse(htaccessPath);
                 if (htaccess != null)
                     HtaccessMap[folderHash] = htaccess;
@@ -1246,14 +1273,66 @@ namespace WebServer
                     HtaccessMap.TryRemove(folderHash, out _);
             }
         }
+        public static void IndexTree(string root)
+        {
+            var enumerationOptions = new EnumerationOptions
+            {
+                RecurseSubdirectories = false,
+                ReturnSpecialDirectories = false,
+                AttributesToSkip = 0
+            };
+
+            var files = new List<string>();
+            var directories = new List<string>();
+
+            var stack = new Stack<string>();
+            stack.Push(root);
+
+            while (stack.Count != 0)
+            {
+                var directory = stack.Pop();
+
+                files.Clear();
+                directories.Clear();
+
+                var entries = new FileSystemEnumerable<(string Path, bool IsDirectory)>(
+                    directory,
+                    static (ref FileSystemEntry entry) =>
+                        (entry.ToSpecifiedFullPath(), entry.IsDirectory),
+                    enumerationOptions);
+
+                foreach (var entry in entries)
+                {
+                    if (entry.IsDirectory)
+                        directories.Add(entry.Path);
+                    else
+                        files.Add(entry.Path);
+                }
+
+                Parallel.ForEach(files, paralleloptions, IndexFile);
+
+                IndexDirectory(directory);
+
+                foreach (var subdirectory in directories)
+                    stack.Push(subdirectory);
+            }
+        }
         public static void IndexErrorPages(string rootDirectory)
         {
             foreach (string folder in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.TopDirectoryOnly))
-                IndexErrorPage(folder.Replace(Path.DirectorySeparatorChar, '/'));
+                IndexErrorPage(folder
+#if WINDOWS_PATH
+                    .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                    );
         }
         public static void IndexErrorPage(string Folder)
         {
-            string tmpfile = Path.Combine(Folder, "error404.html").Replace(Path.DirectorySeparatorChar, '/');
+            string tmpfile = Path.Combine(Folder, "error404.html")
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
             ulong tmpHash = HashSpan(tmpfile.AsSpan(BackendDir.Length));
 
             if (!FileLead.TryGetValue(tmpHash, out _)) return; // error404.html not indexed
@@ -1363,11 +1442,23 @@ namespace WebServer
             };
             watcher.Filter = "*";
 
-            watcher.Created += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
-            watcher.Changed += (sender, e) => OnFileEvent(e.FullPath.Replace(Path.DirectorySeparatorChar, '/'));
+            watcher.Created += (sender, e) => OnFileEvent(e.FullPath
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                );
+            watcher.Changed += (sender, e) => OnFileEvent(e.FullPath
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                );
             watcher.Deleted += (sender, e) =>
             {
-                string fullFile = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
+                string fullFile = e.FullPath
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
                 if (fullFile.Length > BackendDir.Length)
                 {
                     ulong hash = HashSpan(fullFile.AsSpan(BackendDir.Length));
@@ -1391,8 +1482,16 @@ namespace WebServer
             };
             watcher.Renamed += (sender, e) =>
             {
-                string oldPath = e.OldFullPath.Replace(Path.DirectorySeparatorChar, '/');
-                string newPath = e.FullPath.Replace(Path.DirectorySeparatorChar, '/');
+                string oldPath = e.OldFullPath
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
+                string newPath = e.FullPath
+#if WINDOWS_PATH
+                .Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
                 bool isDir = false;
                 try { isDir = (File.GetAttributes(newPath) & FileAttributes.Directory) != 0; }
                 catch { isDir = !Path.HasExtension(newPath); } // fallback heuristic
@@ -1459,7 +1558,11 @@ namespace WebServer
 
         static void UpdateIndex(string filePath)
         {
-            string? currFolder = Path.GetDirectoryName(filePath)?.Replace(Path.DirectorySeparatorChar, '/');
+            string? currFolder = Path.GetDirectoryName(filePath)
+#if WINDOWS_PATH
+                ?.Replace(Path.DirectorySeparatorChar, '/')
+#endif
+                ;
             if (currFolder == null) return; // root path. Should not happen.
             if (File.Exists(filePath))
             {
@@ -1751,6 +1854,6 @@ namespace WebServer
                 return false;
             }
         }
-        #endregion
+#endregion
     }
 }

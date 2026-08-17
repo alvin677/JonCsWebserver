@@ -14,6 +14,12 @@
     <RepositoryUrl>https://github.com/alvin677/JonCsWebServer</RepositoryUrl>
     <Authors>$(AssemblyName), JonHosting</Authors>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS_PATH</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('win-'))">
+    <DefineConstants>$(DefineConstants);WINDOWS_PATH</DefineConstants>
+  </PropertyGroup>
 
   <ItemGroup>
     <TrimmerRootDescriptor Include="linker.xml" />

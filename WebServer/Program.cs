@@ -103,8 +103,11 @@ public class Program
                             string indx = Startup.BackendDir + String.Join(' ', Args.Skip(1)).TrimStart('/'); // BackendDir forceadds a / to the end if not provided
                             _ = Task.Run(()=>
                             {
+                                Startup.IndexTree(indx);
+                                /*
                                 Startup.IndexFiles(indx);
                                 Startup.IndexDirectories(indx);
+                                */
                                 Startup.IndexErrorPages(Startup.BackendDir);
                                 Console.WriteLine("Indexed " + indx);
                             }); // prevent stalling + prevent crashing from invalid path
