@@ -1283,7 +1283,6 @@ namespace WebServer
             };
 
             var files = new List<string>();
-            var directories = new List<string>();
 
             var stack = new Stack<string>();
             stack.Push(root);
@@ -1293,7 +1292,6 @@ namespace WebServer
                 var directory = stack.Pop();
 
                 files.Clear();
-                directories.Clear();
 
                 var entries = new FileSystemEnumerable<(string Path, bool IsDirectory)>(
                     directory,
@@ -1304,7 +1302,7 @@ namespace WebServer
                 foreach (var entry in entries)
                 {
                     if (entry.IsDirectory)
-                        directories.Add(entry.Path);
+                        stack.Push(entry.Path);
                     else
                         files.Add(entry.Path);
                 }
@@ -1312,9 +1310,6 @@ namespace WebServer
                 Parallel.ForEach(files, paralleloptions, IndexFile);
 
                 IndexDirectory(directory);
-
-                foreach (var subdirectory in directories)
-                    stack.Push(subdirectory);
             }
         }
         public static void IndexErrorPages(string rootDirectory)
