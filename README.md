@@ -549,7 +549,17 @@ running (0m30.0s), 0000/2800 VUs, 2495642 complete and 0 interrupted iterations
   ### [Intel Xeon E5-2680 v4](https://ark.intel.com/content/www/us/en/ark/products/91754/intel-xeon-processor-e5-2680-v4-35m-cache-2-40-ghz.html)	with PNY SATA SSD | Linux debian 6.1.0-26-amd64 6.1.112-1 (2024-09-30) | Tests done using `wrk`
   All benchmarks for this one were done with wrk and webserver running on the same system.
   Roughly 2000% CPU utilization (2x CPUs = 28 cores) (~500% wrk usage)
-  
+
+  HTTP ("lightweight" configuration; works like a normal webserver. Fewer unique features, but endpoints still work the same, just less work in the request handler from optional features.)
+  ```bash
+  15 threads and 1210 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.42ms    1.66ms  88.29ms   95.40%
+    Req/Sec    54.24k     3.42k   66.24k    82.89%
+  24289725 requests in 30.05s, 6.33GB read
+Requests/sec: 808416.61
+Transfer/sec:    215.87MB
+```
   HTTP (with "heavy" features toggled on)
   ```bash
   13 threads and 1050 connections
