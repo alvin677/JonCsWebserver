@@ -1283,7 +1283,6 @@ namespace WebServer
             };
 
             var files = new List<string>();
-
             var stack = new Stack<string>();
             stack.Push(root);
 
