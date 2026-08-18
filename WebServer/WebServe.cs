@@ -1290,8 +1290,6 @@ namespace WebServer
             {
                 var directory = stack.Pop();
 
-                files.Clear();
-
                 var entries = new FileSystemEnumerable<(string Path, bool IsDirectory)>(
                     directory,
                     static (ref FileSystemEntry entry) =>
@@ -1307,8 +1305,9 @@ namespace WebServer
                 }
 
                 Parallel.ForEach(files, paralleloptions, IndexFile);
-
                 IndexDirectory(directory);
+
+                files.Clear();
             }
         }
         public static void IndexErrorPages(string rootDirectory)
