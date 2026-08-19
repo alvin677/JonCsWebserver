@@ -178,14 +178,18 @@ namespace WebServer
             ];
             ExtTypes = new Dictionary<string, string[]>() // "Content-Type", "text/html" so we don't have to split string or anything during runtime, can just do a for loop using i+=2
             {
-                ["html,htm,xhtml"] = ["Content-Type: text/html", "Cache-Control: max-age=86400"], 
+                ["html,htm,xhtml,shtml"] = ["Content-Type: text/html", "Cache-Control: max-age=86400"], 
                 ["php"] = ["Content-Type: text/html"],
                 ["txt,log"] = ["Content-Type: text/plain"],
                 ["srt,vtt"] = ["Content-Type: text/plain; charset=utf-8"],
                 ["css"] = ["Content-Type: text/css"],
+                ["xml"] = ["Content-Type: text/xml"],
                 ["jpg"] = ["Content-Type: image/jpeg"],
                 ["svg"] = ["Content-Type: image/svg+xml"],
+                ["ico"] = ["Content-Type: image/x-icon"],
                 ["mp3"] = ["Content-Type: audio/mpeg"],
+                ["mov"] = ["Content-Type: video/quicktime"],
+                ["flv"] = ["Content-Type: video/x-flv"],
                 ["apk"] = ["Content-Type: application/vnd.android.package-archive"],
                 ["wasm"] = ["Content-Type: application/wasm"],
             };
@@ -201,15 +205,15 @@ namespace WebServer
             {
                 ExtTypes[g] = ["Content-Type: application/" + g];
             }
-            foreach (string g in new string[] { "png", "jpeg", "gif", "webp", "ico" })
+            foreach (string g in new string[] { "png", "jpeg", "gif", "webp", "avif", "tiff" })
             {
                 ExtTypes[g] = ["Content-Type: image/" + g];
             }
-            foreach (string g in new string[] { "wav", "ogg" })
+            foreach (string g in new string[] { "wav", "ogg", "midi" })
             {
                 ExtTypes[g] = ["Content-Type: audio/" + g];
             }
-            foreach (string g in new string[] { "mp4", "flv", "mkv", "wmf", "avi", "webm" })
+            foreach (string g in new string[] { "mp4", "mkv", "wmf", "avi", "webm", "3gpp", "mpeg" })
             {
                 ExtTypes[g] = ["Content-Type: video/" + g];
             }
