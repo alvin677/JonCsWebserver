@@ -729,4 +729,76 @@ Transfer/sec:    115.13MB
 Requests/sec: 469667.13
 Transfer/sec:    111.62MB
 ```
+
+### (2-Thread VPS) [AMD Epyc 7502](https://www.amd.com/en/support/downloads/drivers.html/processors/epyc/epyc-7002-series/amd-epyc-7502.html) | Ubuntu 24.04.5 LTS (GNU/Linux 6.8.0-36-generic x86_64) | Tests done using `wrk`
+According to htop: ~110-150% CPU utilization, and ~40-60% `wrk`-usage. 
+
+HTTP (e.g. C#-backend):
+```
+Running 15s test @ http://localhost:8780/counter
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    11.00ms    2.87ms  37.99ms   74.85%
+    Req/Sec    36.22k     3.72k   58.23k    83.61%
+  1082553 requests in 15.09s, 256.01MB read
+Requests/sec:  71757.75
+Transfer/sec:     16.97MB
+Running 15s test @ http://localhost:8780/counter
+  2 threads and 950 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     9.72ms    4.69ms  48.81ms   71.80%
+    Req/Sec    37.49k     5.66k   50.57k    70.65%
+  1119126 requests in 15.05s, 265.75MB read
+Requests/sec:  74371.62
+Transfer/sec:     17.66MB
+```
+
+HTTP 1-byte static file:
+```
+Running 15s test @ http://localhost:8780/jonhostbench.txt
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    12.15ms    6.63ms  85.65ms   77.73%
+    Req/Sec    28.49k     4.76k   46.37k    72.60%
+  850849 requests in 15.06s, 219.09MB read
+Requests/sec:  56479.41
+Transfer/sec:     14.54MB
+```
+
+Apache2 HTTP 1-byte static file (2x apache2 processes at ~70% each):
+```
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   120.83ms  197.60ms   1.66s    83.74%
+    Req/Sec    10.48k     3.47k   19.83k    63.67%
+  312813 requests in 15.02s, 72.80MB read
+  Socket errors: connect 0, read 15927, write 0, timeout 19
+Requests/sec:  20823.16
+Transfer/sec:      4.85MB
+```
+
+HTTP 13KB static HTML:
+```
+Running 15s test @ http://localhost:8780
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.81ms    9.39ms 116.19ms   72.12%
+    Req/Sec    19.57k     3.99k   30.01k    72.01%
+  585649 requests in 15.10s, 7.04GB read
+Requests/sec:  38777.56
+Transfer/sec:    477.35MB
+```
+
+Apache2 HTTP 13KB static HTML (2x apache2 processes at ~70% each):
+```
+Running 15s test @ http://localhost
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   125.05ms  196.33ms   1.54s    82.44%
+    Req/Sec     8.20k     2.36k   15.00k    66.33%
+  244913 requests in 15.02s, 2.18GB read
+  Socket errors: connect 0, read 13787, write 0, timeout 44
+Requests/sec:  16300.44
+Transfer/sec:    148.46MB
+```
 </details>
