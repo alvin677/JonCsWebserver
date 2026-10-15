@@ -802,16 +802,21 @@ Requests/sec:  16300.44
 Transfer/sec:    148.46MB
 ```
 
-Nginx HTTP template file (2x Nginx processes at ~60% each):
+Nginx HTTP 13KB static HTML (2x Nginx processes at ~60% each, without `try_files` feature):
 ```
-Running 15s test @ http://localhost:8080
-  2 threads and 850 connections
+Running 15s test @ http://localhost:8080/13kb.html
+  2 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    16.12ms   32.25ms 733.09ms   98.49%
-    Req/Sec    32.38k     4.78k   46.59k    83.00%
-  968682 requests in 15.08s, 1.02GB read
-Requests/sec:  64233.28
-Transfer/sec:     69.47MB
+    Latency    16.23ms    8.20ms 399.14ms   92.57%
+    Req/Sec    31.29k     3.17k   42.84k    89.00%
+  936758 requests in 15.08s, 11.24GB read
+  Socket errors: connect 31, read 0, write 0, timeout 0
+Requests/sec:  62104.20
+Transfer/sec:    762.85MB
+```
+
+Nginx HTTP template file/896 bytes (2x Nginx processes at ~60% each, without `try_files`):
+```
 Running 15s test @ http://localhost:8080
   2 threads and 1050 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -822,4 +827,18 @@ Running 15s test @ http://localhost:8080
 Requests/sec:  65926.47
 Transfer/sec:     71.30MB
 ```
+
+Nginx HTTP 13KB static html (`try_files $uri =404;`):
+```
+Running 15s test @ http://localhost:8080/13kb.html
+  2 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.09ms   15.82ms 423.05ms   95.96%
+    Req/Sec    29.18k     4.35k   37.46k    77.67%
+  873682 requests in 15.09s, 10.48GB read
+  Socket errors: connect 31, read 0, write 0, timeout 0
+Requests/sec:  57905.31
+Transfer/sec:    711.27MB
+```
+
 </details>
