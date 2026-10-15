@@ -801,4 +801,25 @@ Running 15s test @ http://localhost
 Requests/sec:  16300.44
 Transfer/sec:    148.46MB
 ```
+
+Nginx HTTP template file (2x Nginx processes at ~60% each):
+```
+Running 15s test @ http://localhost:8080
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    16.12ms   32.25ms 733.09ms   98.49%
+    Req/Sec    32.38k     4.78k   46.59k    83.00%
+  968682 requests in 15.08s, 1.02GB read
+Requests/sec:  64233.28
+Transfer/sec:     69.47MB
+Running 15s test @ http://localhost:8080
+  2 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    15.21ms    3.58ms  64.17ms   84.45%
+    Req/Sec    33.19k     3.26k   39.33k    81.67%
+  992718 requests in 15.06s, 1.05GB read
+  Socket errors: connect 31, read 0, write 0, timeout 0
+Requests/sec:  65926.47
+Transfer/sec:     71.30MB
+```
 </details>
