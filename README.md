@@ -767,6 +767,7 @@ Transfer/sec:     14.54MB
 
 Apache2 HTTP 1-byte static file (2x apache2 processes at ~70% each):
 ```
+Running 15s test @ http://localhost/jonhostbench.txt
   2 threads and 850 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
     Latency   120.83ms  197.60ms   1.66s    83.74%
@@ -775,6 +776,18 @@ Apache2 HTTP 1-byte static file (2x apache2 processes at ~70% each):
   Socket errors: connect 0, read 15927, write 0, timeout 19
 Requests/sec:  20823.16
 Transfer/sec:      4.85MB
+```
+
+Nginx HTTP 1-byte static file (without `try_files`):
+```
+Running 15s test @ http://localhost:8080/jonhostbench.txt
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    20.79ms   73.43ms   1.33s    97.77%
+    Req/Sec    35.97k     3.64k   53.58k    87.00%
+  1076292 requests in 15.06s, 242.23MB read
+Requests/sec:  71450.20
+Transfer/sec:     16.08MB
 ```
 
 HTTP 13KB static HTML:
@@ -801,8 +814,6 @@ Running 15s test @ http://localhost
 Requests/sec:  16300.44
 Transfer/sec:    148.46MB
 ```
-
-> The Nginx binary used is compiled directly on the system using [nginx-1.30.4](https://nginx.org/download/nginx-1.30.4.tar.gz)
 
 Nginx HTTP 13KB static HTML (2x Nginx processes at ~60% each, without `try_files` feature):
 ```
@@ -842,5 +853,7 @@ Running 15s test @ http://localhost:8080
 Requests/sec:  65926.47
 Transfer/sec:     71.30MB
 ```
+
+> The Nginx binary used is compiled directly on the system using [nginx-1.30.4](https://nginx.org/download/nginx-1.30.4.tar.gz)
 
 </details>
