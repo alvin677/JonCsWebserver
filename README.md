@@ -753,6 +753,18 @@ Requests/sec:  74371.62
 Transfer/sec:     17.66MB
 ```
 
+HTTPS:
+```
+Running 15s test @ https://localhost:8743/counter
+  2 threads and 650 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    17.64ms   46.08ms 770.07ms   98.42%
+    Req/Sec    21.41k     3.35k   29.42k    81.52%
+  600581 requests in 15.05s, 142.69MB read
+Requests/sec:  39902.06
+Transfer/sec:      9.48MB
+```
+
 HTTP 1-byte static file:
 ```
 Running 15s test @ http://localhost:8780/jonhostbench.txt
@@ -763,6 +775,18 @@ Running 15s test @ http://localhost:8780/jonhostbench.txt
   850849 requests in 15.06s, 219.09MB read
 Requests/sec:  56479.41
 Transfer/sec:     14.54MB
+```
+
+HTTPS 1-byte static file:
+```
+Running 15s test @ https://localhost:8743/jonhostbench.txt
+  2 threads and 600 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    15.95ms   24.47ms 962.71ms   99.74%
+    Req/Sec    18.61k     2.27k   22.65k    83.51%
+  522874 requests in 15.08s, 134.64MB read
+Requests/sec:  34674.16
+Transfer/sec:      8.93MB
 ```
 
 Apache2 HTTP 1-byte static file (2x apache2 processes at ~70% each):
@@ -776,6 +800,19 @@ Running 15s test @ http://localhost/jonhostbench.txt
   Socket errors: connect 0, read 15927, write 0, timeout 19
 Requests/sec:  20823.16
 Transfer/sec:      4.85MB
+```
+
+Apache2 HTTPS 1-byte static file:
+```
+Running 15s test @ https://localhost/jonhostbench.txt
+  2 threads and 650 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    16.60ms    7.49ms  73.84ms   72.44%
+    Req/Sec   761.68    217.77     1.88k    68.46%
+  22776 requests in 15.08s, 5.30MB read
+  Socket errors: connect 0, read 19816, write 0, timeout 0
+Requests/sec:   1510.08
+Transfer/sec:    359.93KB
 ```
 
 Nginx HTTP 1-byte static file (without `try_files`):
@@ -802,7 +839,19 @@ Requests/sec:  38777.56
 Transfer/sec:    477.35MB
 ```
 
-Apache2 HTTP 13KB static HTML (2x apache2 processes at ~70% each):
+HTTPS 13KB static HTML:
+```
+Running 15s test @ https://localhost:8743
+  2 threads and 750 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    34.38ms   29.42ms 610.66ms   94.07%
+    Req/Sec    10.16k     2.93k   17.84k    70.07%
+  288749 requests in 15.02s, 3.47GB read
+Requests/sec:  19226.74
+Transfer/sec:    236.79MB
+```
+
+Apache2 HTTP 9KB static HTML (2x apache2 processes at ~70% each):
 ```
 Running 15s test @ http://localhost
   2 threads and 850 connections
@@ -813,6 +862,19 @@ Running 15s test @ http://localhost
   Socket errors: connect 0, read 13787, write 0, timeout 44
 Requests/sec:  16300.44
 Transfer/sec:    148.46MB
+```
+
+Apache2 HTTPS 9KB static HTML:
+```
+Running 15s test @ https://localhost
+  2 threads and 850 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.16ms    8.25ms 146.51ms   74.15%
+    Req/Sec   779.47    211.50     1.37k    71.24%
+  23357 requests in 15.09s, 212.76MB read
+  Socket errors: connect 0, read 21749, write 0, timeout 0
+Requests/sec:   1547.97
+Transfer/sec:     14.10MB
 ```
 
 Nginx HTTP 13KB static HTML (2x Nginx processes at ~60% each, without `try_files` feature):
@@ -855,5 +917,8 @@ Transfer/sec:     71.30MB
 ```
 
 > The Nginx binary used is compiled directly on the system using [nginx-1.30.4](https://nginx.org/download/nginx-1.30.4.tar.gz)
+> built by gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
+> configure arguments: --without-http_rewrite_module
+> (No SSL module in it)
 
 </details>
