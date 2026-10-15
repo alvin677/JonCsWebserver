@@ -802,6 +802,8 @@ Requests/sec:  16300.44
 Transfer/sec:    148.46MB
 ```
 
+> The Nginx binary used is compiled directly on the system using [nginx-1.30.4](https://nginx.org/download/nginx-1.30.4.tar.gz)
+
 Nginx HTTP 13KB static HTML (2x Nginx processes at ~60% each, without `try_files` feature):
 ```
 Running 15s test @ http://localhost:8080/13kb.html
@@ -815,19 +817,6 @@ Requests/sec:  62104.20
 Transfer/sec:    762.85MB
 ```
 
-Nginx HTTP template file/896 bytes (2x Nginx processes at ~60% each, without `try_files`):
-```
-Running 15s test @ http://localhost:8080
-  2 threads and 1050 connections
-  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    15.21ms    3.58ms  64.17ms   84.45%
-    Req/Sec    33.19k     3.26k   39.33k    81.67%
-  992718 requests in 15.06s, 1.05GB read
-  Socket errors: connect 31, read 0, write 0, timeout 0
-Requests/sec:  65926.47
-Transfer/sec:     71.30MB
-```
-
 Nginx HTTP 13KB static html (`try_files $uri =404;`):
 ```
 Running 15s test @ http://localhost:8080/13kb.html
@@ -839,6 +828,19 @@ Running 15s test @ http://localhost:8080/13kb.html
   Socket errors: connect 31, read 0, write 0, timeout 0
 Requests/sec:  57905.31
 Transfer/sec:    711.27MB
+```
+
+Nginx HTTP template file/896 bytes (2x Nginx processes at ~60% each, without `try_files`):
+```
+Running 15s test @ http://localhost:8080
+  2 threads and 1050 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    15.21ms    3.58ms  64.17ms   84.45%
+    Req/Sec    33.19k     3.26k   39.33k    81.67%
+  992718 requests in 15.06s, 1.05GB read
+  Socket errors: connect 31, read 0, write 0, timeout 0
+Requests/sec:  65926.47
+Transfer/sec:     71.30MB
 ```
 
 </details>
