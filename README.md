@@ -917,8 +917,10 @@ Transfer/sec:     71.30MB
 ```
 
 > The Nginx binary used is compiled directly on the system using [nginx-1.30.4](https://nginx.org/download/nginx-1.30.4.tar.gz)
-> built by gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
-> configure arguments: --without-http_rewrite_module
+```
+built by gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
+configure arguments: --without-http_rewrite_module
+```
 > (No SSL module in it)
 
 </details>
