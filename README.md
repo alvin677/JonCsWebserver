@@ -721,13 +721,14 @@ HTTP
   29020259 requests in 1.00m, 6.76GB read
 Requests/sec: 482886.09
 Transfer/sec:    115.13MB
-  10 threads and 1000 connections
+Running 15s test @ http://localhost/count
+  12 threads and 910 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     1.94ms    0.95ms 206.74ms   84.79%
-    Req/Sec    47.25k     4.71k   59.14k    91.13%
-  14121794 requests in 30.07s, 3.28GB read
-Requests/sec: 469667.13
-Transfer/sec:    111.62MB
+    Latency     1.60ms  667.34us  15.72ms   78.53%
+    Req/Sec    43.33k     1.72k   51.63k    72.94%
+  7771954 requests in 15.04s, 1.82GB read
+Requests/sec: 516690.56
+Transfer/sec:    123.68MB
 ```
 
 ### (2-Thread VPS) [AMD Epyc 7502](https://www.amd.com/en/support/downloads/drivers.html/processors/epyc/epyc-7002-series/amd-epyc-7502.html) | Ubuntu 24.04.5 LTS (GNU/Linux 6.8.0-36-generic x86_64) | Tests done using `wrk`
