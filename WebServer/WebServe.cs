@@ -1298,10 +1298,15 @@ namespace WebServer
 
                 foreach (var entry in entries)
                 {
+#if WINDOWS_PATH
+                    var path = entry.Path.Replace(Path.DirectorySeparatorChar, '/');
+#else
+                    var path = entry.Path;
+#endif
                     if (entry.IsDirectory)
-                        stack.Push(entry.Path);
+                        stack.Push(path);
                     else
-                        files.Add(entry.Path);
+                        files.Add(path);
                 }
 
                 Parallel.ForEach(files, paralleloptions, IndexFile);

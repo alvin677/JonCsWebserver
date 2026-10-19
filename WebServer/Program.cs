@@ -203,7 +203,7 @@ public class Program
             }
         });
 #if WINDOWS_PATH
-    Console.WriteLine("This is a WINDOWS executable");
+        Console.WriteLine("This is a WINDOWS executable.");
 #endif
         Console.WriteLine("NOTE: Files are indexed in a case-insensitive manner. Rename your files appropriately if needed.");
         StartMetricsTimer();
