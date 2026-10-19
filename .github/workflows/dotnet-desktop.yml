@@ -61,7 +61,9 @@ jobs:
 
     - name: Restore
       run: dotnet restore WebServer/WebServer.csproj
-
+    # Test syntax/conditions in csproj
+    - name: Check WINDOWS_PATH
+      run: dotnet msbuild WebServer/WebServer.csproj -getProperty:DefineConstants -p:RuntimeIdentifier=${{ matrix.rid }}
     #
     # NORMAL BUILD
     #
